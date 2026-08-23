@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   api:
     build:
@@ -12,6 +10,7 @@ services:
       - '${PORT:-3000}:3000'
     environment:
       - NODE_ENV=development
+      - DOCKER_CONTAINER=true
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/gallery_express?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
