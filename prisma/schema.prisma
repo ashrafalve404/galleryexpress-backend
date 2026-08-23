@@ -1,0 +1,849 @@
+// This is the Prisma schema for Gallery Express Bus Ticket Booking System
+// Architecture: SaaS-ready with companyId on all business entities
+// Current scope: Single tenant (Gallery Express)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==================================================
+// ENUMS
+// ==================================================
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  COUNTER_MANAGER
+  COUNTER_AGENT
+  STAFF
+  CUSTOMER
+}
+
+enum CoachStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum SeatType {
+  REGULAR
+  VIP
+  LADIES
+  DISABLED
+  DRIVER
+  HELPER
+  BLOCKED
+}
+
+enum SeatStatus {
+  AVAILABLE
+  UNAVAILABLE
+  MAINTENANCE
+}
+
+enum RouteStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ScheduleStatus {
+  ACTIVE
+  INACTIVE
+  CANCELLED
+  COMPLETED
+}
+
+enum BookingStatus {
+  PENDING
+  HELD
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  FAILED
+}
+
+enum BookingSource {
+  ONLINE
+  COUNTER
+  API
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentProvider {
+  MANUAL
+  SSLCOMMERZ
+  BKASH
+  NAGAD
+  STRIPE
+  CASH
+}
+
+enum TicketStatus {
+  ACTIVE
+  CANCELLED
+  USED
+  EXPIRED
+}
+
+enum CancellationStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PROCESSED
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  NOT_APPLICABLE
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum CounterStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SliderStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  TICKET_ISSUED
+  GENERAL
+}
+
+enum SettingType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+}
+
+// ==================================================
+// TENANT / COMPANY
+// ==================================================
+
+model Company {
+  id          String        @id @default(uuid())
+  name        String
+  slug        String        @unique
+  logo        String?
+  email       String?
+  phone       String?
+  address     String?
+  website     String?
+  status      CompanyStatus @default(ACTIVE)
+  settings    Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  users          User[]
+  coaches        Coach[]
+  coachTypes     CoachType[]
+  seatLayouts    SeatLayout[]
+  routes         Route[]
+  schedules      Schedule[]
+  fares          Fare[]
+  bookings       Booking[]
+  discounts      Discount[]
+  counters       Counter[]
+  cmsPages       CmsPage[]
+  sliders        Slider[]
+  notifications  Notification[]
+  settings_      SystemSetting[]
+  auditLogs      AuditLog[]
+  cancellationPolicies CancellationPolicy[]
+
+  @@map("companies")
+}
+
+// ==================================================
+// USERS & AUTH
+// ==================================================
+
+model User {
+  id                   String     @id @default(uuid())
+  companyId            String
+  email                String     @unique
+  phone                String?    @unique
+  passwordHash         String
+  firstName            String
+  lastName             String
+  role                 UserRole   @default(CUSTOMER)
+  status               UserStatus @default(ACTIVE)
+  failedLoginAttempts  Int        @default(0)
+  lockedUntil          DateTime?
+  lastLoginAt          DateTime?
+  lastLoginIp          String?
+  emailVerifiedAt      DateTime?
+  phoneVerifiedAt      DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  // Relations
+  company        Company        @relation(fields: [companyId], references: [id])
+  refreshTokens  RefreshToken[]
+  bookings       Booking[]
+  counterUsers   CounterUser[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  cancellations  Cancellation[]
+
+  @@index([companyId])
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revoked    Boolean   @default(false)
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  ipAddress  String?
+  userAgent  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+// ==================================================
+// COACHES / BUSES
+// ==================================================
+
+model CoachType {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String   // e.g. "AC Sleeper", "Non-AC Standard", "VIP"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id])
+  coaches  Coach[]
+  fares    Fare[]
+
+  @@index([companyId])
+  @@map("coach_types")
+}
+
+model SeatLayout {
+  id           String   @id @default(uuid())
+  companyId    String
+  name         String   // e.g. "2+2 Standard", "2+1 VIP", "Sleeper"
+  rows         Int
+  columns      Int
+  layoutConfig Json     // Detailed layout JSON: [{row, col, seatType, label}]
+  description  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+  coaches Coach[]
+
+  @@index([companyId])
+  @@map("seat_layouts")
+}
+
+model Coach {
+  id                 String      @id @default(uuid())
+  companyId          String
+  coachTypeId        String
+  seatLayoutId       String?
+  name               String      // e.g. "Gallery Express AC 01"
+  coachNumber        String      // e.g. "GE-AC-01"
+  registrationNumber String      @unique
+  isAC               Boolean     @default(false)
+  totalSeats         Int
+  status             CoachStatus @default(ACTIVE)
+  description        String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  company    Company    @relation(fields: [companyId], references: [id])
+  coachType  CoachType  @relation(fields: [coachTypeId], references: [id])
+  seatLayout SeatLayout? @relation(fields: [seatLayoutId], references: [id])
+  seats      Seat[]
+  schedules  Schedule[]
+
+  @@index([companyId])
+  @@index([coachNumber])
+  @@map("coaches")
+}
+
+model Seat {
+  id         String     @id @default(uuid())
+  coachId    String
+  seatNumber String     // e.g. "A1", "B2"
+  row        Int
+  column     Int
+  position   String?    // e.g. "window", "aisle", "middle"
+  seatType   SeatType   @default(REGULAR)
+  status     SeatStatus @default(AVAILABLE)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  coach       Coach         @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  bookingSeats BookingSeat[]
+  seatLocks   SeatLock[]
+  passengers  Passenger[]
+
+  @@unique([coachId, seatNumber])
+  @@index([coachId])
+  @@map("seats")
+}
+
+// ==================================================
+// ROUTES
+// ==================================================
+
+model Route {
+  id           String      @id @default(uuid())
+  companyId    String
+  origin       String      // City/Location name
+  destination  String
+  distanceKm   Float?
+  durationMins Int?
+  status       RouteStatus @default(ACTIVE)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  company   Company     @relation(fields: [companyId], references: [id])
+  stops     RouteStop[]
+  schedules Schedule[]
+  fares     Fare[]
+
+  @@index([companyId])
+  @@index([origin, destination])
+  @@map("routes")
+}
+
+model RouteStop {
+  id               String   @id @default(uuid())
+  routeId          String
+  locationName     String
+  sequence         Int      // Order of stop on route
+  arrivalOffset    Int?     // Minutes from departure
+  departureOffset  Int?     // Minutes from departure
+  boardingAllowed  Boolean  @default(true)
+  droppingAllowed  Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  route        Route  @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  faresFrom    Fare[] @relation("FareFromStop")
+  faresTo      Fare[] @relation("FareToStop")
+
+  @@unique([routeId, sequence])
+  @@index([routeId])
+  @@map("route_stops")
+}
+
+// ==================================================
+// SCHEDULES / TRIPS
+// ==================================================
+
+model Schedule {
+  id               String         @id @default(uuid())
+  companyId        String
+  coachId          String
+  routeId          String
+  departureDate    DateTime       @db.Date
+  departureTime    String         // HH:mm format
+  arrivalTime      String         // HH:mm format
+  isRecurring      Boolean        @default(false)
+  recurringDays    Int[]          // Day of week: 0=Sun, 1=Mon...
+  bookingOpenTime  DateTime?
+  bookingCloseTime DateTime?
+  status           ScheduleStatus @default(ACTIVE)
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  company   Company      @relation(fields: [companyId], references: [id])
+  coach     Coach        @relation(fields: [coachId], references: [id])
+  route     Route        @relation(fields: [routeId], references: [id])
+  bookings  Booking[]
+  seatLocks SeatLock[]
+
+  @@index([companyId])
+  @@index([coachId])
+  @@index([routeId])
+  @@index([departureDate])
+  @@map("schedules")
+}
+
+// ==================================================
+// FARES
+// ==================================================
+
+model Fare {
+  id            String    @id @default(uuid())
+  companyId     String
+  routeId       String
+  coachTypeId   String?
+  fromStopId    String?   // null = route origin
+  toStopId      String?   // null = route destination
+  baseAmount    Decimal   @db.Decimal(10, 2)
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company     Company    @relation(fields: [companyId], references: [id])
+  route       Route      @relation(fields: [routeId], references: [id])
+  coachType   CoachType? @relation(fields: [coachTypeId], references: [id])
+  fromStop    RouteStop? @relation("FareFromStop", fields: [fromStopId], references: [id])
+  toStop      RouteStop? @relation("FareToStop", fields: [toStopId], references: [id])
+  bookingSeats BookingSeat[]
+
+  @@index([companyId])
+  @@index([routeId])
+  @@map("fares")
+}
+
+// ==================================================
+// BOOKINGS
+// ==================================================
+
+model Booking {
+  id             String        @id @default(uuid())
+  companyId      String
+  scheduleId     String
+  userId         String?       // null for counter/walk-in
+  counterId      String?
+  bookingRef     String        @unique
+  status         BookingStatus @default(PENDING)
+  totalAmount    Decimal       @db.Decimal(10, 2)
+  discountAmount Decimal       @db.Decimal(10, 2) @default(0)
+  netAmount      Decimal       @db.Decimal(10, 2)
+  paymentStatus  PaymentStatus @default(PENDING)
+  source         BookingSource @default(ONLINE)
+  notes          String?
+  heldAt         DateTime?
+  confirmedAt    DateTime?
+  cancelledAt    DateTime?
+  expiresAt      DateTime?     // When HELD booking expires
+  idempotencyKey String?       @unique
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  company      Company        @relation(fields: [companyId], references: [id])
+  schedule     Schedule       @relation(fields: [scheduleId], references: [id])
+  user         User?          @relation(fields: [userId], references: [id])
+  counter      Counter?       @relation(fields: [counterId], references: [id])
+  bookingSeats BookingSeat[]
+  passengers   Passenger[]
+  tickets      Ticket[]
+  payments     Payment[]
+  cancellation Cancellation?
+  discountUsages DiscountUsage[]
+
+  @@index([companyId])
+  @@index([scheduleId])
+  @@index([userId])
+  @@index([bookingRef])
+  @@index([status])
+  @@map("bookings")
+}
+
+model BookingSeat {
+  id          String  @id @default(uuid())
+  bookingId   String
+  seatId      String
+  fareId      String?
+  passengerId String?
+  amount      Decimal @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+
+  booking   Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  seat      Seat      @relation(fields: [seatId], references: [id])
+  fare      Fare?     @relation(fields: [fareId], references: [id])
+  passenger Passenger? @relation(fields: [passengerId], references: [id])
+
+  @@unique([bookingId, seatId])
+  @@index([bookingId])
+  @@index([seatId])
+  @@map("booking_seats")
+}
+
+model SeatLock {
+  id           String   @id @default(uuid())
+  scheduleId   String
+  seatId       String
+  sessionToken String   // Client session/user identifier
+  expiresAt    DateTime
+  lockedBy     String?  // userId or IP
+  createdAt    DateTime @default(now())
+
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  seat     Seat     @relation(fields: [seatId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, seatId])
+  @@index([scheduleId])
+  @@index([expiresAt])
+  @@map("seat_locks")
+}
+
+// ==================================================
+// PASSENGERS
+// ==================================================
+
+model Passenger {
+  id          String   @id @default(uuid())
+  bookingId   String
+  seatId      String?
+  name        String
+  phone       String?
+  email       String?
+  gender      String?  // MALE, FEMALE, OTHER
+  age         Int?
+  nationalId  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  booking      Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  seat         Seat?        @relation(fields: [seatId], references: [id])
+  tickets      Ticket[]
+  bookingSeats BookingSeat[]
+
+  @@index([bookingId])
+  @@map("passengers")
+}
+
+// ==================================================
+// TICKETS
+// ==================================================
+
+model Ticket {
+  id           String       @id @default(uuid())
+  bookingId    String
+  passengerId  String
+  ticketNumber String       @unique
+  qrToken      String       @unique
+  status       TicketStatus @default(ACTIVE)
+  issuedAt     DateTime     @default(now())
+  usedAt       DateTime?
+  cancelledAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  booking   Booking   @relation(fields: [bookingId], references: [id])
+  passenger Passenger @relation(fields: [passengerId], references: [id])
+
+  @@index([bookingId])
+  @@index([ticketNumber])
+  @@index([qrToken])
+  @@map("tickets")
+}
+
+// ==================================================
+// PAYMENTS
+// ==================================================
+
+model Payment {
+  id            String          @id @default(uuid())
+  bookingId     String
+  provider      PaymentProvider @default(MANUAL)
+  providerRef   String?         // External transaction reference
+  amount        Decimal         @db.Decimal(10, 2)
+  currency      String          @default("BDT")
+  status        PaymentStatus   @default(PENDING)
+  metadata      Json?           // Provider-specific data
+  initiatedAt   DateTime        @default(now())
+  completedAt   DateTime?
+  failedAt      DateTime?
+  failureReason String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+  @@index([providerRef])
+  @@map("payments")
+}
+
+// ==================================================
+// CANCELLATIONS
+// ==================================================
+
+model CancellationPolicy {
+  id                    String   @id @default(uuid())
+  companyId             String
+  name                  String
+  hoursBeforeDeparture  Int      // Apply this policy if cancellation is within N hours
+  chargePercentage      Decimal  @db.Decimal(5, 2)
+  isDefault             Boolean  @default(false)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  company       Company      @relation(fields: [companyId], references: [id])
+  cancellations Cancellation[]
+
+  @@index([companyId])
+  @@map("cancellation_policies")
+}
+
+model Cancellation {
+  id           String             @id @default(uuid())
+  bookingId    String             @unique
+  requestedBy  String             // userId
+  policyId     String?
+  reason       String?
+  originalAmount Decimal          @db.Decimal(10, 2)
+  chargeAmount Decimal            @db.Decimal(10, 2) @default(0)
+  refundAmount Decimal            @db.Decimal(10, 2) @default(0)
+  status       CancellationStatus @default(REQUESTED)
+  refundStatus RefundStatus       @default(PENDING)
+  processedAt  DateTime?
+  processedBy  String?
+  notes        String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  booking  Booking             @relation(fields: [bookingId], references: [id])
+  policy   CancellationPolicy? @relation(fields: [policyId], references: [id])
+  user     User                @relation(fields: [requestedBy], references: [id])
+
+  @@index([bookingId])
+  @@map("cancellations")
+}
+
+// ==================================================
+// DISCOUNTS
+// ==================================================
+
+model Discount {
+  id          String       @id @default(uuid())
+  companyId   String
+  code        String       @unique
+  description String?
+  type        DiscountType @default(PERCENTAGE)
+  value       Decimal      @db.Decimal(10, 2)
+  minAmount   Decimal?     @db.Decimal(10, 2)
+  maxUses     Int?
+  usedCount   Int          @default(0)
+  validFrom   DateTime
+  validTo     DateTime?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  company Company         @relation(fields: [companyId], references: [id])
+  usages  DiscountUsage[]
+
+  @@index([companyId])
+  @@index([code])
+  @@map("discounts")
+}
+
+model DiscountUsage {
+  id         String   @id @default(uuid())
+  discountId String
+  bookingId  String
+  amount     Decimal  @db.Decimal(10, 2)
+  usedAt     DateTime @default(now())
+
+  discount Discount @relation(fields: [discountId], references: [id])
+  booking  Booking  @relation(fields: [bookingId], references: [id])
+
+  @@unique([discountId, bookingId])
+  @@index([discountId])
+  @@map("discount_usages")
+}
+
+// ==================================================
+// COUNTERS
+// ==================================================
+
+model Counter {
+  id        String        @id @default(uuid())
+  companyId String
+  name      String
+  location  String?
+  phone     String?
+  status    CounterStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id])
+  counterUsers CounterUser[]
+  bookings     Booking[]
+
+  @@index([companyId])
+  @@map("counters")
+}
+
+model CounterUser {
+  id        String   @id @default(uuid())
+  counterId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  counter Counter @relation(fields: [counterId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([counterId, userId])
+  @@map("counter_users")
+}
+
+// ==================================================
+// CMS
+// ==================================================
+
+model CmsPage {
+  id          String   @id @default(uuid())
+  companyId   String
+  slug        String   // e.g. "about", "terms", "privacy", "faq"
+  title       String
+  content     String   @db.Text
+  metaTitle   String?
+  metaDesc    String?
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, slug])
+  @@index([companyId])
+  @@map("cms_pages")
+}
+
+// ==================================================
+// SLIDERS / BANNERS
+// ==================================================
+
+model Slider {
+  id         String       @id @default(uuid())
+  companyId  String
+  imageUrl   String
+  title      String?
+  subtitle   String?
+  ctaText    String?
+  ctaUrl     String?
+  orderIndex Int          @default(0)
+  status     SliderStatus @default(ACTIVE)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@map("sliders")
+}
+
+// ==================================================
+// NOTIFICATIONS
+// ==================================================
+
+model Notification {
+  id        String           @id @default(uuid())
+  companyId String
+  userId    String
+  type      NotificationType @default(GENERAL)
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@map("notifications")
+}
+
+// ==================================================
+// SYSTEM SETTINGS
+// ==================================================
+
+model SystemSetting {
+  id        String      @id @default(uuid())
+  companyId String
+  key       String
+  value     String
+  type      SettingType @default(STRING)
+  label     String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, key])
+  @@index([companyId])
+  @@map("system_settings")
+}
+
+// ==================================================
+// AUDIT LOGS
+// ==================================================
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  companyId String
+  userId    String
+  action    String   // e.g. "CREATE_COACH", "CANCEL_TICKET", "UPDATE_FARE"
+  entity    String   // e.g. "Coach", "Ticket", "Fare"
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}

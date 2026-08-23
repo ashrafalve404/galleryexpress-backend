@@ -1,0 +1,90 @@
+version: '3.9'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: gallery-express-api
+    restart: unless-stopped
+    ports:
+      - '${PORT:-3000}:3000'
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/gallery_express?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-refresh-secret}
+      - JWT_ACCESS_EXPIRES=15m
+      - JWT_REFRESH_EXPIRES=7d
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001}
+      - SEAT_LOCK_TTL_SECONDS=300
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run start:dev
+    networks:
+      - gallery-express-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: gallery-express-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gallery_express
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d gallery_express']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gallery-express-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: gallery-express-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gallery-express-network
+
+  adminer:
+    image: adminer
+    container_name: gallery-express-adminer
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    depends_on:
+      - postgres
+    networks:
+      - gallery-express-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  gallery-express-network:
+    driver: bridge
