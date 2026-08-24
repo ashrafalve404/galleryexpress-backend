@@ -63,10 +63,10 @@ async function main() {
 
   // 3. Coach Types
   const acCoachType = await prisma.coachType.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000001' },
+    where: { id: '00000000-0000-4000-a000-000000000001' },
     update: {},
     create: {
-      id: '00000000-0000-0000-0000-000000000001',
+      id: '00000000-0000-4000-a000-000000000001',
       companyId: company.id,
       name: 'AC Executive',
       description: 'Air conditioned premium executive coach',
@@ -74,10 +74,10 @@ async function main() {
   });
 
   const nonAcCoachType = await prisma.coachType.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000002' },
+    where: { id: '00000000-0000-4000-a000-000000000002' },
     update: {},
     create: {
-      id: '00000000-0000-0000-0000-000000000002',
+      id: '00000000-0000-4000-a000-000000000002',
       companyId: company.id,
       name: 'Non-AC Deluxe',
       description: 'Comfortable non-AC deluxe coach',
@@ -85,10 +85,10 @@ async function main() {
   });
 
   const vipCoachType = await prisma.coachType.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000003' },
+    where: { id: '00000000-0000-4000-a000-000000000003' },
     update: {},
     create: {
-      id: '00000000-0000-0000-0000-000000000003',
+      id: '00000000-0000-4000-a000-000000000003',
       companyId: company.id,
       name: 'VIP Sleeper',
       description: 'Luxury VIP business sleeper coach',
@@ -111,10 +111,10 @@ async function main() {
   }
 
   const seatLayout = await prisma.seatLayout.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000010' },
+    where: { id: '00000000-0000-4000-a000-000000000010' },
     update: {},
     create: {
-      id: '00000000-0000-0000-0000-000000000010',
+      id: '00000000-0000-4000-a000-000000000010',
       companyId: company.id,
       name: '2+2 Standard (40 seats)',
       rows: 10,
@@ -170,23 +170,24 @@ async function main() {
   }
   console.log('✅ Coaches and seat maps created');
 
-  // 6. Routes
+  // 6. Routes — Dhaka ↔ Cox's Bazar corridor (no Comilla passenger stop)
   const routesInfo = [
-    { id: '00000000-0000-0000-0000-000000000020', origin: 'Dhaka', dest: 'Chittagong', dist: 264, duration: 300 },
-    { id: '00000000-0000-0000-0000-000000000021', origin: 'Chittagong', dest: 'Dhaka', dist: 264, duration: 300 },
-    { id: '00000000-0000-0000-0000-000000000022', origin: 'Dhaka', dest: "Cox's Bazar", dist: 414, duration: 480 },
-    { id: '00000000-0000-0000-0000-000000000023', origin: "Cox's Bazar", dest: 'Dhaka', dist: 414, duration: 480 },
-    { id: '00000000-0000-0000-0000-000000000024', origin: 'Dhaka', dest: 'Sylhet', dist: 240, duration: 360 },
-    { id: '00000000-0000-0000-0000-000000000025', origin: 'Sylhet', dest: 'Dhaka', dist: 240, duration: 360 },
-    { id: '00000000-0000-0000-0000-000000000026', origin: 'Dhaka', dest: 'Rajshahi', dist: 245, duration: 330 },
-    { id: '00000000-0000-0000-0000-000000000027', origin: 'Dhaka', dest: 'Khulna', dist: 270, duration: 390 },
+    // Full corridor
+    { id: '00000000-0000-4000-a000-000000000020', origin: 'Dhaka',       dest: "Cox's Bazar",  dist: 414, duration: 480 }, // 0
+    { id: '00000000-0000-4000-a000-000000000021', origin: "Cox's Bazar", dest: 'Dhaka',         dist: 414, duration: 480 }, // 1
+    // Dhaka ↔ Chittagong
+    { id: '00000000-0000-4000-a000-000000000022', origin: 'Dhaka',       dest: 'Chittagong',    dist: 264, duration: 300 }, // 2
+    { id: '00000000-0000-4000-a000-000000000023', origin: 'Chittagong',  dest: 'Dhaka',         dist: 264, duration: 300 }, // 3
+    // Chittagong ↔ Cox's Bazar
+    { id: '00000000-0000-4000-a000-000000000026', origin: 'Chittagong',  dest: "Cox's Bazar",   dist: 150, duration: 180 }, // 4
+    { id: '00000000-0000-4000-a000-000000000027', origin: "Cox's Bazar", dest: 'Chittagong',    dist: 150, duration: 180 }, // 5
   ];
 
   const createdRoutes = [];
   for (const r of routesInfo) {
     const route = await prisma.route.upsert({
       where: { id: r.id },
-      update: {},
+      update: { origin: r.origin, destination: r.dest, distanceKm: r.dist, durationMins: r.duration },
       create: {
         id: r.id,
         companyId: company.id,
@@ -199,31 +200,37 @@ async function main() {
     });
     createdRoutes.push(route);
   }
-  console.log('✅ Routes created');
+  console.log('✅ Routes created (Dhaka–Cox\'s Bazar corridor, no Comilla stop)');
 
-  // 7. Fares
+  // 7. Fares — per route per coach type (no Comilla)
   const fareEffective = new Date('2026-01-01');
   const faresConfig = [
-    { routeId: createdRoutes[0].id, coachTypeId: acCoachType.id, base: 900 },
-    { routeId: createdRoutes[0].id, coachTypeId: nonAcCoachType.id, base: 650 },
-    { routeId: createdRoutes[0].id, coachTypeId: vipCoachType.id, base: 1200 },
-    { routeId: createdRoutes[1].id, coachTypeId: acCoachType.id, base: 900 },
-    { routeId: createdRoutes[2].id, coachTypeId: acCoachType.id, base: 1250 },
-    { routeId: createdRoutes[2].id, coachTypeId: vipCoachType.id, base: 1600 },
-    { routeId: createdRoutes[3].id, coachTypeId: acCoachType.id, base: 1250 },
-    { routeId: createdRoutes[4].id, coachTypeId: acCoachType.id, base: 850 },
-    { routeId: createdRoutes[5].id, coachTypeId: acCoachType.id, base: 850 },
-    { routeId: createdRoutes[6].id, coachTypeId: acCoachType.id, base: 750 },
-    { routeId: createdRoutes[7].id, coachTypeId: acCoachType.id, base: 800 },
+    // Dhaka ↔ Cox's Bazar (full route)
+    { routeId: createdRoutes[0].id, coachTypeId: acCoachType.id,    base: 1250 },
+    { routeId: createdRoutes[0].id, coachTypeId: nonAcCoachType.id, base: 850  },
+    { routeId: createdRoutes[0].id, coachTypeId: vipCoachType.id,   base: 1800 },
+    { routeId: createdRoutes[1].id, coachTypeId: acCoachType.id,    base: 1250 },
+    { routeId: createdRoutes[1].id, coachTypeId: nonAcCoachType.id, base: 850  },
+    // Dhaka ↔ Chittagong
+    { routeId: createdRoutes[2].id, coachTypeId: acCoachType.id,    base: 900  },
+    { routeId: createdRoutes[2].id, coachTypeId: nonAcCoachType.id, base: 650  },
+    { routeId: createdRoutes[2].id, coachTypeId: vipCoachType.id,   base: 1200 },
+    { routeId: createdRoutes[3].id, coachTypeId: acCoachType.id,    base: 900  },
+    { routeId: createdRoutes[3].id, coachTypeId: nonAcCoachType.id, base: 650  },
+    // Chittagong ↔ Cox's Bazar
+    { routeId: createdRoutes[4].id, coachTypeId: acCoachType.id,    base: 500  },
+    { routeId: createdRoutes[4].id, coachTypeId: nonAcCoachType.id, base: 350  },
+    { routeId: createdRoutes[5].id, coachTypeId: acCoachType.id,    base: 500  },
+    { routeId: createdRoutes[5].id, coachTypeId: nonAcCoachType.id, base: 350  },
   ];
 
   for (let idx = 0; idx < faresConfig.length; idx++) {
     const f = faresConfig[idx];
     await prisma.fare.upsert({
-      where: { id: `00000000-0000-0000-0000-0000000000${30 + idx}` },
-      update: {},
+      where: { id: `00000000-0000-4000-a000-0000000000${(30 + idx).toString().padStart(2, '0')}` },
+      update: { baseAmount: f.base },
       create: {
-        id: `00000000-0000-0000-0000-0000000000${30 + idx}`,
+        id: `00000000-0000-4000-a000-0000000000${(30 + idx).toString().padStart(2, '0')}`,
         companyId: company.id,
         routeId: f.routeId,
         coachTypeId: f.coachTypeId,
@@ -235,8 +242,31 @@ async function main() {
   }
   console.log('✅ Fares created');
 
-  // 8. Daily Schedules for Today, Tomorrow, and Next 7 Days
-  const departureTimes = ['07:30', '11:00', '15:30', '21:00', '22:45'];
+  // 8. Daily Schedules — today + next 7 days (no Comilla routes)
+  const scheduleMatrix: { routeIdx: number; coachIdx: number; depTime: string }[] = [
+    // Dhaka → Cox's Bazar (4 daily buses)
+    { routeIdx: 0, coachIdx: 0, depTime: '07:00' },
+    { routeIdx: 0, coachIdx: 2, depTime: '10:00' },
+    { routeIdx: 0, coachIdx: 3, depTime: '15:30' },
+    { routeIdx: 0, coachIdx: 4, depTime: '21:00' },
+    // Cox's Bazar → Dhaka (3 daily buses)
+    { routeIdx: 1, coachIdx: 0, depTime: '07:00' },
+    { routeIdx: 1, coachIdx: 3, depTime: '14:00' },
+    { routeIdx: 1, coachIdx: 4, depTime: '22:00' },
+    // Dhaka → Chittagong (3 daily)
+    { routeIdx: 2, coachIdx: 1, depTime: '08:00' },
+    { routeIdx: 2, coachIdx: 2, depTime: '14:00' },
+    { routeIdx: 2, coachIdx: 4, depTime: '20:00' },
+    // Chittagong → Dhaka (2 daily)
+    { routeIdx: 3, coachIdx: 1, depTime: '07:30' },
+    { routeIdx: 3, coachIdx: 3, depTime: '15:00' },
+    // Chittagong → Cox's Bazar (2 daily)
+    { routeIdx: 4, coachIdx: 2, depTime: '09:00' },
+    { routeIdx: 4, coachIdx: 3, depTime: '16:00' },
+    // Cox's Bazar → Chittagong (2 daily)
+    { routeIdx: 5, coachIdx: 2, depTime: '08:00' },
+    { routeIdx: 5, coachIdx: 4, depTime: '15:00' },
+  ];
 
   let scheduleCounter = 100;
   for (let dayOffset = 0; dayOffset <= 7; dayOffset++) {
@@ -244,16 +274,17 @@ async function main() {
     targetDate.setDate(targetDate.getDate() + dayOffset);
     targetDate.setHours(0, 0, 0, 0);
 
-    for (let rIdx = 0; rIdx < createdRoutes.length; rIdx++) {
-      const route = createdRoutes[rIdx];
-      const coach = createdCoaches[rIdx % createdCoaches.length];
-      const depTime = departureTimes[rIdx % departureTimes.length];
+    for (const s of scheduleMatrix) {
+      const route = createdRoutes[s.routeIdx];
+      const coach = createdCoaches[s.coachIdx];
+      const [h, m] = s.depTime.split(':').map(Number);
+      const durMins = route.durationMins ?? 480;
+      const arrivalTotalMins = h * 60 + m + durMins;
+      const arrH = Math.floor(arrivalTotalMins / 60) % 24;
+      const arrM = arrivalTotalMins % 60;
+      const arrTime = `${arrH.toString().padStart(2, '0')}:${arrM.toString().padStart(2, '0')}`;
 
-      const [h, m] = depTime.split(':').map(Number);
-      const arrH = (h + 6) % 24;
-      const arrTime = `${arrH.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-
-      const scheduleId = `00000000-0000-0000-0000-${scheduleCounter.toString().padStart(12, '0')}`;
+      const scheduleId = `00000000-0000-4000-a000-${scheduleCounter.toString().padStart(12, '0')}`;
       scheduleCounter++;
 
       await prisma.schedule.upsert({
@@ -265,7 +296,7 @@ async function main() {
           coachId: coach.id,
           routeId: route.id,
           departureDate: targetDate,
-          departureTime: depTime,
+          departureTime: s.depTime,
           arrivalTime: arrTime,
           isRecurring: false,
           status: 'ACTIVE',
@@ -276,20 +307,49 @@ async function main() {
   }
   console.log(`✅ ${scheduleCounter - 100} Daily Schedules created across Today and Next 7 Days!`);
 
-  // 9. Counters
-  await prisma.counter.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000080' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000080',
-      companyId: company.id,
-      name: 'Sayedabad Counter',
-      location: 'Sayedabad Bus Terminal, Gate 2, Dhaka',
-      phone: '01711002233',
-      status: 'ACTIVE',
-    },
-  });
-  console.log('✅ Counter created');
+  // 9. Counters — 20 Dhaka boarding counters + Chittagong + Cox's Bazar
+  const countersData = [
+    // ── Dhaka boarding counters (20) ──
+    { id: '00000000-0000-4000-a000-000000000080', name: 'Dhaka - Abdullahpur',         location: 'Abdullahpur Bus Stop, Uttara, Dhaka',                  phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000081', name: 'Dhaka - Uttara Azampur',       location: 'Azampur Bus Stop, Uttara, Dhaka',                      phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000082', name: 'Dhaka - Uttara Jasimuddin',    location: 'Jasimuddin Road, Uttara, Dhaka',                       phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000083', name: 'Dhaka - Uttara Airport',       location: 'Airport Road, Uttara, Dhaka',                          phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000084', name: 'Dhaka - Bashundhara',          location: 'Bashundhara R/A Gate, Dhaka-1229',                     phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000085', name: 'Dhaka - Nadda',                location: 'Nadda Bus Stop, Badda, Dhaka',                         phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000086', name: 'Dhaka - Notun Bazar',          location: 'Notun Bazar Bus Stop, Badda, Dhaka',                   phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000087', name: 'Dhaka - Uttar Badda',          location: 'Uttar Badda Bus Stop, Dhaka',                          phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000088', name: 'Dhaka - Moddho Badda',         location: 'Moddho Badda Bus Stop, Dhaka',                         phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000089', name: 'Dhaka - Rampura',              location: 'Rampura Bus Stop, DIT Road, Dhaka',                    phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000090', name: 'Dhaka - Malibagh',             location: 'Malibagh Chowdhurypara, Dhaka',                        phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000091', name: 'Dhaka - Fakirerpool',          location: 'Fakirerpool Bus Stop, Motijheel, Dhaka',               phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000092', name: 'Dhaka - Arambagh',             location: 'Arambagh Bus Stop, Motijheel, Dhaka',                  phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000093', name: 'Dhaka - Sayedabad',            location: 'Sayedabad Bus Terminal, Gate 7, Demra Road, Dhaka-1362', phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000094', name: 'Dhaka - Soniakora',            location: 'Soniakora Bus Stop, Jatrabari, Dhaka',                 phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000095', name: 'Dhaka - Matuail',              location: 'Matuail Bus Stop, Jatrabari, Dhaka',                   phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000096', name: 'Dhaka - Signboard',            location: 'Signboard Bus Stop, Demra, Dhaka',                     phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000097', name: 'Dhaka - Chittagong Road',      location: 'Chittagong Road, Demra, Dhaka',                        phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000098', name: 'Dhaka - Kanchpur',             location: 'Kanchpur Bridge, Narayanganj–Dhaka Highway',           phone: '01826-110036' },
+    { id: '00000000-0000-4000-a000-000000000099', name: 'Dhaka - Madanpur',             location: 'Madanpur Bus Stop, Narayanganj, Dhaka Highway',        phone: '01826-110036' },
+    // ── Chittagong & Cox's Bazar drop-off ──
+    { id: '00000000-0000-4000-a000-000000000100', name: "Chittagong - Dampara",         location: 'Dampara Bus Terminal, Station Road, Chittagong-4000',  phone: '01826-110038' },
+    { id: '00000000-0000-4000-a000-000000000101', name: "Cox's Bazar - Kolatoli",       location: "Kolatoli Road, Near Sea Beach, Cox's Bazar-4700",      phone: '01826-110039' },
+  ];
+
+  for (const c of countersData) {
+    await prisma.counter.upsert({
+      where: { id: c.id },
+      update: { name: c.name, location: c.location, phone: c.phone },
+      create: {
+        id: c.id,
+        companyId: company.id,
+        name: c.name,
+        location: c.location,
+        phone: c.phone,
+        status: 'ACTIVE',
+      },
+    });
+  }
+  console.log('✅ Counters created: 20 Dhaka boarding counters + Chittagong + Cox\'s Bazar');
 
   console.log('\n🎉 Rich seed completed successfully!');
 }

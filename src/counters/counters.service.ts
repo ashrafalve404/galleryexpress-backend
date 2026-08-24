@@ -17,9 +17,9 @@ export class CountersService {
     return this.prisma.counter.create({ data: { companyId, ...dto } });
   }
 
-  async findAll(companyId: string) {
+  async findAll(companyId?: string) {
     return this.prisma.counter.findMany({
-      where: { companyId },
+      where: companyId ? { companyId, status: 'ACTIVE' } : { status: 'ACTIVE' },
       include: {
         counterUsers: {
           include: {

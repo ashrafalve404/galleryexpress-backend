@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { CountersService } from './counters.service';
-import { CountersController } from './counters.controller';
+import { CountersController, PublicCountersController } from './counters.controller';
 
 @Module({
-  controllers: [CountersController],
+  controllers: [CountersController, PublicCountersController],
   providers: [CountersService],
   exports: [CountersService],
 })

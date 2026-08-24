@@ -53,37 +53,42 @@ export class BookingsService {
     const locked: string[] = [];
     const failed: string[] = [];
 
-    // Use Redis pipeline for atomic multi-lock
-    const pipeline = this.redis.pipeline();
+    // Check existing Redis locks
+    const checkPipeline = this.redis.pipeline();
     for (const seatId of seatIds) {
       const key = this.getSeatLockKey(scheduleId, seatId);
-      pipeline.set(key, sessionToken, 'EX', this.seatLockTtl, 'NX');
+      checkPipeline.get(key);
     }
 
-    const results = await pipeline.exec();
-    if (!results) {
-      // Redis unavailable — fall back to DB-only locking
+    const existingLocks = await checkPipeline.exec().catch(() => null);
+
+    if (existingLocks) {
+      const setPipeline = this.redis.pipeline();
+      for (let i = 0; i < seatIds.length; i++) {
+        const seatId = seatIds[i];
+        const key = this.getSeatLockKey(scheduleId, seatId);
+        const holder = existingLocks[i]?.[1] as string | null;
+
+        // Allow if unlocked, or locked by the same session or user
+        if (!holder || holder === sessionToken || (userId && holder === userId)) {
+          setPipeline.set(key, sessionToken, 'EX', this.seatLockTtl);
+          locked.push(seatId);
+        } else {
+          failed.push(seatId);
+        }
+      }
+      await setPipeline.exec().catch(() => {});
+    } else {
+      // Fallback to DB locking if Redis unavailable
       return this.lockSeatsInDb(scheduleId, seatIds, sessionToken, userId);
     }
 
-    for (let i = 0; i < seatIds.length; i++) {
-      const result = results[i];
-      if (result && result[1] === 'OK') {
-        locked.push(seatIds[i]);
-      } else {
-        failed.push(seatIds[i]);
-      }
-    }
-
-    // If any failed, release the ones we locked
     if (failed.length > 0) {
       await this.releaseRedisLocks(scheduleId, locked, sessionToken);
       return { locked: [], failed: seatIds };
     }
 
-    // Persist to DB for durability
     await this.upsertDbSeatLocks(scheduleId, locked, sessionToken, userId);
-
     return { locked, failed };
   }
 
@@ -238,18 +243,19 @@ export class BookingsService {
       // 6. Create booking in DB transaction with row-level locking
       const booking = await this.prisma.$transaction(async (tx) => {
         // Double-check seats are not booked (DB-level truth)
-        const existingBookings = await tx.$queryRaw<Array<{ seat_id: string }>>`
-          SELECT bs.seat_id
-          FROM booking_seats bs
-          INNER JOIN bookings b ON b.id = bs.booking_id
-          WHERE b.schedule_id = ${dto.scheduleId}
-            AND b.status IN ('HELD', 'CONFIRMED')
-            AND bs.seat_id = ANY(${seatIds}::uuid[])
-          FOR UPDATE SKIP LOCKED
-        `;
+        const existingBookings = await tx.bookingSeat.findMany({
+          where: {
+            booking: {
+              scheduleId: dto.scheduleId,
+              status: { in: ['HELD', 'CONFIRMED'] },
+            },
+            seatId: { in: seatIds },
+          },
+          select: { seatId: true },
+        });
 
         if (existingBookings.length > 0) {
-          const conflictSeats = existingBookings.map((r) => r.seat_id);
+          const conflictSeats = existingBookings.map((r) => r.seatId);
           throw new ConflictException(
             `Seats already booked: ${conflictSeats.join(', ')}`,
             'SEAT_UNAVAILABLE',
@@ -370,11 +376,15 @@ export class BookingsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const validProviders = ['MANUAL', 'SSLCOMMERZ', 'BKASH', 'NAGAD', 'STRIPE', 'CASH'];
+      const rawProvider = (dto.paymentProvider || '').toUpperCase();
+      const providerEnum = validProviders.includes(rawProvider) ? (rawProvider as never) : ('MANUAL' as never);
+
       // Create payment record
       const payment = await tx.payment.create({
         data: {
           bookingId,
-          provider: dto.paymentProvider as never,
+          provider: providerEnum,
           providerRef: dto.providerRef,
           amount: booking.netAmount,
           status: 'PAID',

@@ -22,8 +22,25 @@ import { UserRole } from '@prisma/client';
 import { IsUUID } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
+import { Public } from '../common/decorators/public.decorator';
+import { Query } from '@nestjs/common';
+
 class AssignUserDto {
   @ApiProperty() @IsUUID() userId: string;
+}
+
+@ApiTags('Counters')
+@Controller('api/v1')
+export class PublicCountersController {
+  constructor(private readonly countersService: CountersService) {}
+
+  @Public()
+  @Get('counters')
+  @ApiOperation({ summary: 'List counters (public)' })
+  findAllPublic(@Query('companyId') companyId?: string) {
+    // If companyId not provided, search default or fallback
+    return this.countersService.findAll(companyId || '');
+  }
 }
 
 @ApiTags('Admin - Counters')
