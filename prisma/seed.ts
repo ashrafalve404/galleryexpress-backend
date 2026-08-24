@@ -18,9 +18,9 @@ async function main() {
     create: {
       name: 'Gallery Express',
       slug: 'gallery-express',
-      email: 'info@galleryexpress.com',
-      phone: '+880 1700-000000',
-      address: 'Sayedabad Bus Terminal, Dhaka, Bangladesh',
+      email: 'galleryexpresslimited@gmail.com',
+      phone: '+8801700000000',
+      address: 'Navana Shopping Centre, Gulshan Avenue 01, Gulshan, Dhaka, Bangladesh',
       website: 'https://galleryexpress.com',
       status: 'ACTIVE',
     },
