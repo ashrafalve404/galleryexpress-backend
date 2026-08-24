@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
   Param,
   Query,
@@ -85,6 +86,14 @@ export class BookingsController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @Get('user/my-bookings')
+  @ApiOperation({ summary: 'Get all bookings of logged in user' })
+  findUserBookings(@CurrentUser() user: AuthenticatedUser) {
+    return this.bookingsService.findUserBookings(user.id, user.companyId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @Get('bookings/ref/:ref')
   @ApiOperation({ summary: 'Get booking by reference number' })
   findByRef(@Param('ref') ref: string, @CurrentUser() user: AuthenticatedUser) {
@@ -129,5 +138,18 @@ export class BookingsController {
       user.id,
       dto.counterId,
     );
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Delete('admin/bookings/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a booking permanently (Super Admin / Admin)' })
+  deleteBooking(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.bookingsService.deleteBooking(id, user.companyId);
   }
 }

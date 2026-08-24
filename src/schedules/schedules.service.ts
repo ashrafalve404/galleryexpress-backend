@@ -130,7 +130,7 @@ export class SchedulesService {
         : {}),
     };
 
-    return this.prisma.schedule.findMany({
+    const schedules = await this.prisma.schedule.findMany({
       where,
       orderBy: [{ departureDate: 'asc' }, { departureTime: 'asc' }],
       include: {
@@ -140,6 +140,25 @@ export class SchedulesService {
         route: { include: { stops: { orderBy: { sequence: 'asc' } } } },
       },
     });
+
+    if (dto.date) {
+      const searchDateStr = dto.date.split('T')[0];
+      
+      // Explicitly calculate date & time for Bangladesh Standard Time (Asia/Dhaka)
+      const bdNowStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Dhaka' });
+      const bdDate = new Date(bdNowStr);
+      const bdTodayStr = `${bdDate.getFullYear()}-${(bdDate.getMonth() + 1).toString().padStart(2, '0')}-${bdDate.getDate().toString().padStart(2, '0')}`;
+
+      if (searchDateStr === bdTodayStr) {
+        const currentHH = bdDate.getHours().toString().padStart(2, '0');
+        const currentMM = bdDate.getMinutes().toString().padStart(2, '0');
+        const currentTimeStr = `${currentHH}:${currentMM}`;
+
+        return schedules.filter((s) => s.departureTime >= currentTimeStr);
+      }
+    }
+
+    return schedules;
   }
 
   async findOne(id: string, companyId: string) {
@@ -224,13 +243,15 @@ export class SchedulesService {
     const bookedSeatIds = new Set(bookedSeats.map((s) => s.seatId));
     const lockedSeatIds = new Set(lockedSeats.map((s) => s.seatId));
 
-    return schedule.coach.seats.map((seat) => ({
-      ...seat,
-      availability: bookedSeatIds.has(seat.id)
-        ? 'BOOKED'
-        : lockedSeatIds.has(seat.id)
-          ? 'LOCKED'
-          : 'AVAILABLE',
-    }));
+    return schedule.coach.seats.map((seat) => {
+      const isBooked = bookedSeatIds.has(seat.id);
+      const isHeld = lockedSeatIds.has(seat.id);
+      return {
+        ...seat,
+        availability: isBooked ? 'BOOKED' : isHeld ? 'LOCKED' : 'AVAILABLE',
+        isBooked,
+        isHeld,
+      };
+    });
   }
 }

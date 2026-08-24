@@ -651,6 +651,36 @@ export class BookingsService {
     return booking;
   }
 
+  async findUserBookings(userId: string, companyId: string) {
+    return this.prisma.booking.findMany({
+      where: { userId, companyId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        bookingSeats: { include: { seat: true, passenger: true } },
+        passengers: true,
+        schedule: { include: { coach: true, route: true } },
+        tickets: true,
+        payments: true,
+      },
+    });
+  }
+
+  async deleteBooking(id: string, companyId: string) {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id, companyId },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.ticket.deleteMany({ where: { bookingId: id } });
+      await tx.payment.deleteMany({ where: { bookingId: id } });
+      await tx.cancellation.deleteMany({ where: { bookingId: id } });
+      await tx.bookingSeat.deleteMany({ where: { bookingId: id } });
+      await tx.passenger.deleteMany({ where: { bookingId: id } });
+      return tx.booking.delete({ where: { id } });
+    });
+  }
+
   // ================================================
   // HELPERS
   // ================================================
