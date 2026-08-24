@@ -3,31 +3,31 @@ import {
   IsString,
   MinLength,
   IsOptional,
-  Matches,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsEmail()
-  email: string;
+  email?: string;
 
   @ApiProperty()
   @IsString()
   firstName: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  lastName: string;
+  lastName?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @Matches(/^[0-9+\-\s()]{7,15}$/, { message: 'Invalid phone number' })
   phone?: string;
 
   @ApiProperty({ minLength: 8 })
   @IsString()
-  @MinLength(8)
+  @MinLength(6)
   password: string;
 }

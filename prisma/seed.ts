@@ -9,11 +9,9 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log('🌱 Starting seed...');
+  console.log('🌱 Starting rich demo seed...');
 
-  // ================================================
-  // 1. Create Company: Gallery Express
-  // ================================================
+  // 1. Company
   const company = await prisma.company.upsert({
     where: { slug: 'gallery-express' },
     update: {},
@@ -22,23 +20,18 @@ async function main() {
       slug: 'gallery-express',
       email: 'info@galleryexpress.com',
       phone: '+880 1700-000000',
-      address: 'Dhaka, Bangladesh',
+      address: 'Sayedabad Bus Terminal, Dhaka, Bangladesh',
       website: 'https://galleryexpress.com',
       status: 'ACTIVE',
     },
   });
   console.log(`✅ Company: ${company.name} (${company.id})`);
 
-  // Store company ID as env for registrations
-  process.env.DEFAULT_COMPANY_ID = company.id;
-
-  // ================================================
-  // 2. Create Super Admin
-  // ================================================
+  // 2. Super Admin & Counter Agent
   const adminPasswordHash = await argon2.hash('Admin@123456');
-  const superAdmin = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { email: 'admin@galleryexpress.com' },
-    update: {},
+    update: { phone: '+8801700000001' },
     create: {
       companyId: company.id,
       email: 'admin@galleryexpress.com',
@@ -50,13 +43,11 @@ async function main() {
       status: 'ACTIVE',
     },
   });
-  console.log(`✅ Super Admin: ${superAdmin.email}`);
 
-  // Counter agent
   const agentHash = await argon2.hash('Agent@123456');
-  const counterAgent = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { email: 'agent@galleryexpress.com' },
-    update: {},
+    update: { phone: '+8801700000002' },
     create: {
       companyId: company.id,
       email: 'agent@galleryexpress.com',
@@ -68,18 +59,17 @@ async function main() {
       status: 'ACTIVE',
     },
   });
+  console.log('✅ Admin & Counter Agent users active');
 
-  // ================================================
   // 3. Coach Types
-  // ================================================
   const acCoachType = await prisma.coachType.upsert({
     where: { id: '00000000-0000-0000-0000-000000000001' },
     update: {},
     create: {
       id: '00000000-0000-0000-0000-000000000001',
       companyId: company.id,
-      name: 'AC Sleeper',
-      description: 'Air conditioned sleeper coach',
+      name: 'AC Executive',
+      description: 'Air conditioned premium executive coach',
     },
   });
 
@@ -89,25 +79,33 @@ async function main() {
     create: {
       id: '00000000-0000-0000-0000-000000000002',
       companyId: company.id,
-      name: 'Non-AC Standard',
-      description: 'Standard non-AC coach',
+      name: 'Non-AC Deluxe',
+      description: 'Comfortable non-AC deluxe coach',
+    },
+  });
+
+  const vipCoachType = await prisma.coachType.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000003' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000003',
+      companyId: company.id,
+      name: 'VIP Sleeper',
+      description: 'Luxury VIP business sleeper coach',
     },
   });
   console.log('✅ Coach types created');
 
-  // ================================================
-  // 4. Seat Layout: 2+2 arrangement (10 rows = 40 seats)
-  // ================================================
+  // 4. Seat Layout (2+2, 40 seats)
   const layout2x2Config = [];
   const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
   for (let row = 0; row < 10; row++) {
     for (let col = 0; col < 4; col++) {
-      const label = `${rowLabels[row]}${col + 1}`;
       layout2x2Config.push({
         row: row + 1,
         column: col + 1,
         seatType: SeatType.REGULAR,
-        label,
+        label: `${rowLabels[row]}${col + 1}`,
       });
     }
   }
@@ -125,356 +123,180 @@ async function main() {
       description: 'Standard 2+2 seating arrangement',
     },
   });
-  console.log('✅ Seat layout created');
 
-  // ================================================
   // 5. Coaches
-  // ================================================
-  const coach1 = await prisma.coach.upsert({
-    where: { registrationNumber: 'DHAKA-AC-001' },
-    update: {},
-    create: {
-      companyId: company.id,
-      coachTypeId: acCoachType.id,
-      seatLayoutId: seatLayout.id,
-      name: 'Gallery Express AC 01',
-      coachNumber: 'GE-AC-01',
-      registrationNumber: 'DHAKA-AC-001',
-      isAC: true,
-      totalSeats: 40,
-      status: CoachStatus.ACTIVE,
-      description: 'Premium AC coach Dhaka-Chittagong route',
-    },
-  });
+  const coachesData = [
+    { num: 'GE-AC-01', reg: 'DHAKA-METRO-BA-11-1001', name: 'Gallery Express Scania AC 01', typeId: acCoachType.id, isAC: true },
+    { num: 'GE-[#NAC-02]', reg: 'DHAKA-METRO-BA-11-1002', name: 'Gallery Express Hino Non-AC 02', typeId: nonAcCoachType.id, isAC: false },
+    { num: 'GE-VIP-03', reg: 'DHAKA-METRO-BA-11-1003', name: 'Gallery Express Volvo VIP 03', typeId: vipCoachType.id, isAC: true },
+    { num: 'GE-AC-04', reg: 'DHAKA-METRO-BA-11-1004', name: 'Gallery Express Hyundai AC 04', typeId: acCoachType.id, isAC: true },
+    { num: 'GE-AC-05', reg: 'DHAKA-METRO-BA-11-1005', name: 'Gallery Express Scania AC 05', typeId: acCoachType.id, isAC: true },
+  ];
 
-  // Generate seats for coach 1
-  const existingSeats = await prisma.seat.count({ where: { coachId: coach1.id } });
-  if (existingSeats === 0) {
-    await prisma.seat.createMany({
-      data: (layout2x2Config as Array<{ row: number; column: number; seatType: SeatType; label: string }>).map((cell) => ({
-        coachId: coach1.id,
-        seatNumber: cell.label,
-        row: cell.row,
-        column: cell.column,
-        seatType: cell.seatType,
-        status: 'AVAILABLE',
-      })),
+  const createdCoaches = [];
+  for (const c of coachesData) {
+    const coach = await prisma.coach.upsert({
+      where: { registrationNumber: c.reg },
+      update: {},
+      create: {
+        companyId: company.id,
+        coachTypeId: c.typeId,
+        seatLayoutId: seatLayout.id,
+        name: c.name,
+        coachNumber: c.num,
+        registrationNumber: c.reg,
+        isAC: c.isAC,
+        totalSeats: 40,
+        status: CoachStatus.ACTIVE,
+        description: 'Luxury intercity coach equipped with WiFi and charging ports',
+      },
     });
+    createdCoaches.push(coach);
+
+    // Create 40 seats if not existing
+    const count = await prisma.seat.count({ where: { coachId: coach.id } });
+    if (count === 0) {
+      await prisma.seat.createMany({
+        data: layout2x2Config.map((item) => ({
+          coachId: coach.id,
+          seatNumber: item.label,
+          row: item.row,
+          column: item.column,
+          seatType: SeatType.REGULAR,
+          status: 'AVAILABLE',
+        })),
+      });
+    }
   }
+  console.log('✅ Coaches and seat maps created');
 
-  const coach2 = await prisma.coach.upsert({
-    where: { registrationNumber: 'DHAKA-NON-001' },
-    update: {},
-    create: {
-      companyId: company.id,
-      coachTypeId: nonAcCoachType.id,
-      seatLayoutId: seatLayout.id,
-      name: 'Gallery Express Standard 01',
-      coachNumber: 'GE-STD-01',
-      registrationNumber: 'DHAKA-NON-001',
-      isAC: false,
-      totalSeats: 40,
-      status: CoachStatus.ACTIVE,
-    },
-  });
+  // 6. Routes
+  const routesInfo = [
+    { id: '00000000-0000-0000-0000-000000000020', origin: 'Dhaka', dest: 'Chittagong', dist: 264, duration: 300 },
+    { id: '00000000-0000-0000-0000-000000000021', origin: 'Chittagong', dest: 'Dhaka', dist: 264, duration: 300 },
+    { id: '00000000-0000-0000-0000-000000000022', origin: 'Dhaka', dest: "Cox's Bazar", dist: 414, duration: 480 },
+    { id: '00000000-0000-0000-0000-000000000023', origin: "Cox's Bazar", dest: 'Dhaka', dist: 414, duration: 480 },
+    { id: '00000000-0000-0000-0000-000000000024', origin: 'Dhaka', dest: 'Sylhet', dist: 240, duration: 360 },
+    { id: '00000000-0000-0000-0000-000000000025', origin: 'Sylhet', dest: 'Dhaka', dist: 240, duration: 360 },
+    { id: '00000000-0000-0000-0000-000000000026', origin: 'Dhaka', dest: 'Rajshahi', dist: 245, duration: 330 },
+    { id: '00000000-0000-0000-0000-000000000027', origin: 'Dhaka', dest: 'Khulna', dist: 270, duration: 390 },
+  ];
 
-  const existingSeats2 = await prisma.seat.count({ where: { coachId: coach2.id } });
-  if (existingSeats2 === 0) {
-    await prisma.seat.createMany({
-      data: (layout2x2Config as Array<{ row: number; column: number; seatType: SeatType; label: string }>).map((cell) => ({
-        coachId: coach2.id,
-        seatNumber: cell.label,
-        row: cell.row,
-        column: cell.column,
-        seatType: cell.seatType,
-        status: 'AVAILABLE',
-      })),
+  const createdRoutes = [];
+  for (const r of routesInfo) {
+    const route = await prisma.route.upsert({
+      where: { id: r.id },
+      update: {},
+      create: {
+        id: r.id,
+        companyId: company.id,
+        origin: r.origin,
+        destination: r.dest,
+        distanceKm: r.dist,
+        durationMins: r.duration,
+        status: RouteStatus.ACTIVE,
+      },
     });
+    createdRoutes.push(route);
   }
-  console.log('✅ Coaches created with seats');
-
-  // ================================================
-  // 6. Routes: Dhaka → Chittagong via stops
-  // ================================================
-  const route1 = await prisma.route.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000020' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000020',
-      companyId: company.id,
-      origin: 'Dhaka',
-      destination: 'Chittagong',
-      distanceKm: 264,
-      durationMins: 270,
-      status: RouteStatus.ACTIVE,
-    },
-  });
-
-  // Route stops
-  const existingStops = await prisma.routeStop.count({ where: { routeId: route1.id } });
-  if (existingStops === 0) {
-    await prisma.routeStop.createMany({
-      data: [
-        { routeId: route1.id, locationName: 'Dhaka (Sayedabad)', sequence: 1, arrivalOffset: 0, departureOffset: 0, boardingAllowed: true, droppingAllowed: false },
-        { routeId: route1.id, locationName: 'Comilla', sequence: 2, arrivalOffset: 90, departureOffset: 95, boardingAllowed: true, droppingAllowed: true },
-        { routeId: route1.id, locationName: 'Feni', sequence: 3, arrivalOffset: 150, departureOffset: 155, boardingAllowed: true, droppingAllowed: true },
-        { routeId: route1.id, locationName: 'Chittagong (Dampara)', sequence: 4, arrivalOffset: 270, departureOffset: 270, boardingAllowed: false, droppingAllowed: true },
-      ],
-    });
-  }
-
-  // Route 2: Dhaka → Cox's Bazar
-  const route2 = await prisma.route.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000021' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000021',
-      companyId: company.id,
-      origin: 'Dhaka',
-      destination: "Cox's Bazar",
-      distanceKm: 414,
-      durationMins: 480,
-      status: RouteStatus.ACTIVE,
-    },
-  });
   console.log('✅ Routes created');
 
-  // ================================================
   // 7. Fares
-  // ================================================
   const fareEffective = new Date('2026-01-01');
+  const faresConfig = [
+    { routeId: createdRoutes[0].id, coachTypeId: acCoachType.id, base: 900 },
+    { routeId: createdRoutes[0].id, coachTypeId: nonAcCoachType.id, base: 650 },
+    { routeId: createdRoutes[0].id, coachTypeId: vipCoachType.id, base: 1200 },
+    { routeId: createdRoutes[1].id, coachTypeId: acCoachType.id, base: 900 },
+    { routeId: createdRoutes[2].id, coachTypeId: acCoachType.id, base: 1250 },
+    { routeId: createdRoutes[2].id, coachTypeId: vipCoachType.id, base: 1600 },
+    { routeId: createdRoutes[3].id, coachTypeId: acCoachType.id, base: 1250 },
+    { routeId: createdRoutes[4].id, coachTypeId: acCoachType.id, base: 850 },
+    { routeId: createdRoutes[5].id, coachTypeId: acCoachType.id, base: 850 },
+    { routeId: createdRoutes[6].id, coachTypeId: acCoachType.id, base: 750 },
+    { routeId: createdRoutes[7].id, coachTypeId: acCoachType.id, base: 800 },
+  ];
 
-  await prisma.fare.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000030' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000030',
-      companyId: company.id,
-      routeId: route1.id,
-      coachTypeId: acCoachType.id,
-      baseAmount: 900,
-      effectiveFrom: fareEffective,
-      isActive: true,
-    },
-  });
-
-  await prisma.fare.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000031' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000031',
-      companyId: company.id,
-      routeId: route1.id,
-      coachTypeId: nonAcCoachType.id,
-      baseAmount: 600,
-      effectiveFrom: fareEffective,
-      isActive: true,
-    },
-  });
-
-  await prisma.fare.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000032' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000032',
-      companyId: company.id,
-      routeId: route2.id,
-      coachTypeId: acCoachType.id,
-      baseAmount: 1200,
-      effectiveFrom: fareEffective,
-      isActive: true,
-    },
-  });
+  for (let idx = 0; idx < faresConfig.length; idx++) {
+    const f = faresConfig[idx];
+    await prisma.fare.upsert({
+      where: { id: `00000000-0000-0000-0000-0000000000${30 + idx}` },
+      update: {},
+      create: {
+        id: `00000000-0000-0000-0000-0000000000${30 + idx}`,
+        companyId: company.id,
+        routeId: f.routeId,
+        coachTypeId: f.coachTypeId,
+        baseAmount: f.base,
+        effectiveFrom: fareEffective,
+        isActive: true,
+      },
+    });
+  }
   console.log('✅ Fares created');
 
-  // ================================================
-  // 8. Sample Schedules
-  // ================================================
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0, 0, 0, 0);
+  // 8. Daily Schedules for Today, Tomorrow, and Next 7 Days
+  const departureTimes = ['07:30', '11:00', '15:30', '21:00', '22:45'];
 
-  await prisma.schedule.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000040' },
+  let scheduleCounter = 100;
+  for (let dayOffset = 0; dayOffset <= 7; dayOffset++) {
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + dayOffset);
+    targetDate.setHours(0, 0, 0, 0);
+
+    for (let rIdx = 0; rIdx < createdRoutes.length; rIdx++) {
+      const route = createdRoutes[rIdx];
+      const coach = createdCoaches[rIdx % createdCoaches.length];
+      const depTime = departureTimes[rIdx % departureTimes.length];
+
+      const [h, m] = depTime.split(':').map(Number);
+      const arrH = (h + 6) % 24;
+      const arrTime = `${arrH.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+
+      const scheduleId = `00000000-0000-0000-0000-${scheduleCounter.toString().padStart(12, '0')}`;
+      scheduleCounter++;
+
+      await prisma.schedule.upsert({
+        where: { id: scheduleId },
+        update: { departureDate: targetDate },
+        create: {
+          id: scheduleId,
+          companyId: company.id,
+          coachId: coach.id,
+          routeId: route.id,
+          departureDate: targetDate,
+          departureTime: depTime,
+          arrivalTime: arrTime,
+          isRecurring: false,
+          status: 'ACTIVE',
+          notes: `Daily express service (${route.origin} to ${route.destination})`,
+        },
+      });
+    }
+  }
+  console.log(`✅ ${scheduleCounter - 100} Daily Schedules created across Today and Next 7 Days!`);
+
+  // 9. Counters
+  await prisma.counter.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000080' },
     update: {},
     create: {
-      id: '00000000-0000-0000-0000-000000000040',
+      id: '00000000-0000-0000-0000-000000000080',
       companyId: company.id,
-      coachId: coach1.id,
-      routeId: route1.id,
-      departureDate: tomorrow,
-      departureTime: '22:30',
-      arrivalTime: '06:00',
-      isRecurring: false,
-      status: 'ACTIVE',
-      notes: 'Night service',
-    },
-  });
-
-  await prisma.schedule.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000041' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000041',
-      companyId: company.id,
-      coachId: coach2.id,
-      routeId: route1.id,
-      departureDate: tomorrow,
-      departureTime: '08:00',
-      arrivalTime: '12:30',
-      isRecurring: false,
+      name: 'Sayedabad Counter',
+      location: 'Sayedabad Bus Terminal, Gate 2, Dhaka',
+      phone: '01711002233',
       status: 'ACTIVE',
     },
-  });
-  console.log('✅ Schedules created');
-
-  // ================================================
-  // 9. Counter
-  // ================================================
-  const counter = await prisma.counter.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000050' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000050',
-      companyId: company.id,
-      name: 'Dhaka Main Counter',
-      location: 'Sayedabad, Dhaka',
-      phone: '+880 1700-000010',
-      status: 'ACTIVE',
-    },
-  });
-
-  await prisma.counterUser.upsert({
-    where: { counterId_userId: { counterId: counter.id, userId: counterAgent.id } },
-    update: {},
-    create: { counterId: counter.id, userId: counterAgent.id },
   });
   console.log('✅ Counter created');
 
-  // ================================================
-  // 10. Cancellation Policies
-  // ================================================
-  await prisma.cancellationPolicy.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000060' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000060',
-      companyId: company.id,
-      name: 'Standard Policy (>24h)',
-      hoursBeforeDeparture: 24,
-      chargePercentage: 10,
-      isDefault: true,
-      isActive: true,
-    },
-  });
-
-  await prisma.cancellationPolicy.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000061' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000061',
-      companyId: company.id,
-      name: 'Last Minute (<6h)',
-      hoursBeforeDeparture: 6,
-      chargePercentage: 50,
-      isDefault: false,
-      isActive: true,
-    },
-  });
-  console.log('✅ Cancellation policies created');
-
-  // ================================================
-  // 11. CMS Pages
-  // ================================================
-  const cmsPages = [
-    { slug: 'about', title: 'About Gallery Express', content: '<h1>About Gallery Express</h1><p>Gallery Express is a leading bus transportation company...</p>' },
-    { slug: 'terms', title: 'Terms & Conditions', content: '<h1>Terms & Conditions</h1><p>By booking with Gallery Express...</p>' },
-    { slug: 'privacy', title: 'Privacy Policy', content: '<h1>Privacy Policy</h1><p>Gallery Express is committed to protecting your privacy...</p>' },
-    { slug: 'cancellation-policy', title: 'Cancellation Policy', content: '<h1>Cancellation Policy</h1><p>You may cancel your ticket up to 6 hours before departure...</p>' },
-    { slug: 'faq', title: 'Frequently Asked Questions', content: '<h1>FAQ</h1><p>Find answers to common questions...</p>' },
-  ];
-
-  for (const page of cmsPages) {
-    await prisma.cmsPage.upsert({
-      where: { companyId_slug: { companyId: company.id, slug: page.slug } },
-      update: {},
-      create: { companyId: company.id, ...page, isPublished: true },
-    });
-  }
-  console.log('✅ CMS pages created');
-
-  // ================================================
-  // 12. Sample Slider
-  // ================================================
-  await prisma.slider.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000070' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000070',
-      companyId: company.id,
-      imageUrl: 'https://galleryexpress.com/images/hero-banner.jpg',
-      title: 'Travel in Comfort',
-      subtitle: 'Book your bus ticket online - Fast, Easy, Secure',
-      ctaText: 'Book Now',
-      ctaUrl: '/search',
-      orderIndex: 1,
-      status: 'ACTIVE',
-    },
-  });
-  console.log('✅ Slider created');
-
-  // ================================================
-  // 13. Sample Discount
-  // ================================================
-  await prisma.discount.upsert({
-    where: { code: 'WELCOME10' },
-    update: {},
-    create: {
-      companyId: company.id,
-      code: 'WELCOME10',
-      description: '10% off for first-time customers',
-      type: 'PERCENTAGE',
-      value: 10,
-      minAmount: 500,
-      maxUses: 1000,
-      validFrom: new Date('2026-01-01'),
-      validTo: new Date('2026-12-31'),
-      isActive: true,
-    },
-  });
-  console.log('✅ Sample discount created');
-
-  // ================================================
-  // 14. System Settings
-  // ================================================
-  const settings = [
-    { key: 'company_name', value: 'Gallery Express', label: 'Company Name' },
-    { key: 'booking_hold_minutes', value: '5', label: 'Seat hold duration (minutes)' },
-    { key: 'support_phone', value: '+880 1700-000000', label: 'Support Phone' },
-    { key: 'support_email', value: 'support@galleryexpress.com', label: 'Support Email' },
-    { key: 'currency', value: 'BDT', label: 'Currency' },
-    { key: 'timezone', value: 'Asia/Dhaka', label: 'Timezone' },
-  ];
-
-  for (const setting of settings) {
-    await prisma.systemSetting.upsert({
-      where: { companyId_key: { companyId: company.id, key: setting.key } },
-      update: {},
-      create: { companyId: company.id, ...setting, type: 'STRING' },
-    });
-  }
-  console.log('✅ System settings created');
-
-  console.log('\n🎉 Seed completed successfully!');
-  console.log('\n📋 Login Credentials:');
-  console.log('   Super Admin: admin@galleryexpress.com / Admin@123456');
-  console.log('   Counter Agent: agent@galleryexpress.com / Agent@123456');
-  console.log(`\n🏢 Company ID: ${company.id}`);
+  console.log('\n🎉 Rich seed completed successfully!');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Seed failed:', e);
+    console.error('❌ Seed error:', e);
     process.exit(1);
   })
   .finally(async () => {

@@ -15,6 +15,28 @@ import { RegisterDto } from './dto/register.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UserRole } from '@prisma/client';
 
+function getPhoneVariations(raw: string): string[] {
+  const cleaned = raw.trim();
+  const variations = new Set<string>([cleaned]);
+
+  const digits = cleaned.replace(/\D/g, '');
+  if (digits.length >= 10) {
+    let core = digits;
+    if (core.startsWith('880')) core = core.slice(3);
+    else if (core.startsWith('88')) core = core.slice(2);
+    else if (core.startsWith('0')) core = core.slice(1);
+
+    if (core.length === 10) {
+      variations.add(`+880${core}`);
+      variations.add(`880${core}`);
+      variations.add(`0${core}`);
+      variations.add(core);
+    }
+  }
+
+  return Array.from(variations);
+}
+
 @Injectable()
 export class AuthService {
   private readonly MAX_FAILED_ATTEMPTS = 5;
@@ -27,12 +49,25 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto, ipAddress?: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase() },
+    const identifier = (dto.phone || dto.email || dto.loginIdentifier || '').trim();
+    if (!identifier) {
+      throw new BadRequestException('Phone number or email is required');
+    }
+
+    const phoneVars = getPhoneVariations(identifier);
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { phone: { in: phoneVars } },
+          { email: identifier.toLowerCase() },
+          { email: `${identifier}@galleryexpress.internal` },
+        ],
+      },
     });
 
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Invalid phone number or password');
     }
 
     // Check account lock
@@ -72,7 +107,7 @@ export class AuthService {
         data: updateData,
       });
 
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Invalid phone number or password');
     }
 
     // Reset failed attempts on success
@@ -100,6 +135,7 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
+        phone: user.phone,
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
@@ -109,30 +145,52 @@ export class AuthService {
     };
   }
 
-  async register(dto: RegisterDto, companyId: string) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase() },
+  async register(dto: RegisterDto, companyId?: string) {
+    let targetCompanyId = companyId;
+    if (!targetCompanyId) {
+      const company = await this.prisma.company.findFirst({ select: { id: true } });
+      if (!company) {
+        throw new BadRequestException('No company configured in system');
+      }
+      targetCompanyId = company.id;
+    }
+
+    const rawPhone = (dto.phone || '').trim();
+    const email = dto.email ? dto.email.toLowerCase() : rawPhone ? `${rawPhone}@galleryexpress.internal` : `user_${Date.now()}@galleryexpress.internal`;
+
+    if (rawPhone) {
+      const existingPhone = await this.prisma.user.findFirst({
+        where: { phone: rawPhone },
+      });
+      if (existingPhone) {
+        throw new ConflictException('An account with this phone number already exists.');
+      }
+    }
+
+    const existingEmail = await this.prisma.user.findFirst({
+      where: { email },
     });
 
-    if (existing) {
-      throw new ConflictException('Email already in use');
+    if (existingEmail) {
+      throw new ConflictException('An account with this email/phone already exists.');
     }
 
     const passwordHash = await argon2.hash(dto.password);
 
     const user = await this.prisma.user.create({
       data: {
-        companyId,
-        email: dto.email.toLowerCase(),
-        phone: dto.phone,
+        companyId: targetCompanyId,
+        email,
+        phone: rawPhone || null,
         passwordHash,
         firstName: dto.firstName,
-        lastName: dto.lastName,
+        lastName: dto.lastName || '',
         role: UserRole.CUSTOMER,
       },
       select: {
         id: true,
         email: true,
+        phone: true,
         firstName: true,
         lastName: true,
         role: true,

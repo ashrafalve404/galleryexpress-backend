@@ -108,19 +108,22 @@ export class SchedulesService {
   }
 
   async search(companyId: string, dto: SearchScheduleDto) {
+    const originVal = dto.origin || dto.from;
+    const destVal = dto.destination || dto.to;
+
     const where: Prisma.ScheduleWhereInput = {
       companyId,
       status: 'ACTIVE',
       ...(dto.date && { departureDate: new Date(dto.date) }),
       ...(dto.routeId && { routeId: dto.routeId }),
-      ...(dto.origin || dto.destination
+      ...(originVal || destVal
         ? {
             route: {
-              ...(dto.origin && {
-                origin: { contains: dto.origin, mode: 'insensitive' },
+              ...(originVal && {
+                origin: { contains: originVal, mode: 'insensitive' },
               }),
-              ...(dto.destination && {
-                destination: { contains: dto.destination, mode: 'insensitive' },
+              ...(destVal && {
+                destination: { contains: destVal, mode: 'insensitive' },
               }),
             },
           }

@@ -63,6 +63,9 @@ export class UpdateScheduleDto {
 export class SearchScheduleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() origin?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() destination?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() from?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() to?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() date?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() routeId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() companyId?: string;
 }

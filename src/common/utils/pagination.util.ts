@@ -43,10 +43,10 @@ export function paginatedResponse<T>(
   return {
     data,
     meta: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
+      page: Number(page) || 1,
+      limit: Number(limit) || 20,
+      total: Number(total) || 0,
+      totalPages: Math.ceil((Number(total) || 0) / (Number(limit) || 20)),
     },
   };
 }
@@ -55,8 +55,12 @@ export function getPaginationParams(dto: PaginationDto): {
   skip: number;
   take: number;
 } {
-  const page = dto.page || 1;
-  const limit = dto.limit || 20;
+  const p = typeof dto?.page === 'string' ? parseInt(dto.page, 10) : Number(dto?.page);
+  const l = typeof dto?.limit === 'string' ? parseInt(dto.limit, 10) : Number(dto?.limit);
+
+  const page = isNaN(p) || p < 1 ? 1 : p;
+  const limit = isNaN(l) || l < 1 ? 20 : l;
+
   return {
     skip: (page - 1) * limit,
     take: limit,
