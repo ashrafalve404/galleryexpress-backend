@@ -39,6 +39,8 @@ export class BookingsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateBookingDto,
   ) {
+    this.bookingsService['logger']?.log?.(`[createBooking] raw dto: ${JSON.stringify(dto)}`);
+    console.log('[createBooking-controller] scheduleId:', JSON.stringify(dto.scheduleId), '| seats count:', dto.seats?.length);
     return this.bookingsService.createBooking(user.companyId, dto, user.id);
   }
 

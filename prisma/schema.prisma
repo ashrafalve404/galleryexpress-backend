@@ -847,3 +847,22 @@ model AuditLog {
   @@index([entity, entityId])
   @@map("audit_logs")
 }
+
+// ==================================================
+// CONTACT MESSAGES
+// ==================================================
+
+model ContactMessage {
+  id        String   @id @default(uuid())
+  companyId String?
+  name      String
+  email     String
+  phone     String?
+  message   String
+  status    String   @default("UNREAD") // UNREAD | READ
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("contact_messages")
+}

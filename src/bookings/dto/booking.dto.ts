@@ -11,14 +11,19 @@ import {
   Min,
   Max,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BookingSource } from '@prisma/client';
 
 export class PassengerInfoDto {
   @ApiProperty() @IsString() name: string;
   @ApiProperty() @Matches(/^[0-9+\-\s()]{7,15}$/) phone: string;
-  @ApiPropertyOptional() @IsOptional() @IsEmail() email?: string;
+  // Transform empty string "" -> undefined so @IsOptional skips @IsEmail validation
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  @Transform(({ value }) => (value === '' || value === null ? undefined : value))
+  email?: string;
   @ApiPropertyOptional({ enum: ['MALE', 'FEMALE', 'OTHER'] })
   @IsOptional()
   @IsString()

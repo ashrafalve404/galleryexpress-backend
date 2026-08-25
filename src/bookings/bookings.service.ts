@@ -464,24 +464,26 @@ export class BookingsService {
       throw new BadRequestException('Cancellation already requested');
     }
 
-    // Find applicable cancellation policy
+    // 1. Check if departure date is TODAY in BST (Asia/Dhaka)
+    const nowBstStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' });
+    const depBstStr = new Date(booking.schedule.departureDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' });
+
+    if (nowBstStr === depBstStr) {
+      throw new BadRequestException('Same-day departure tickets cannot be resold or cancelled.');
+    }
+
+    // 2. Find hours until departure
     const hoursUntilDeparture = this.getHoursUntilDeparture(
       booking.schedule.departureDate,
       booking.schedule.departureTime,
     );
 
-    const policy = await this.prisma.cancellationPolicy.findFirst({
-      where: {
-        companyId,
-        isActive: true,
-        hoursBeforeDeparture: { gte: hoursUntilDeparture },
-      },
-      orderBy: { hoursBeforeDeparture: 'asc' },
-    });
+    if (hoursUntilDeparture <= 0) {
+      throw new BadRequestException('Bus has already departed. Cannot resell ticket.');
+    }
 
-    const chargePercentage = policy
-      ? policy.chargePercentage
-      : new Prisma.Decimal(0);
+    // 3. Resell Fee: > 24 hrs before departure -> 0% cut (100% refund), <= 24 hrs -> 20% cut (80% refund)
+    const chargePercentage = hoursUntilDeparture > 24 ? new Prisma.Decimal(0) : new Prisma.Decimal(20);
     const chargeAmount = booking.netAmount
       .times(chargePercentage)
       .dividedBy(100)
@@ -493,7 +495,7 @@ export class BookingsService {
         data: {
           bookingId,
           requestedBy,
-          policyId: policy?.id,
+          policyId: undefined,
           reason: dto.reason,
           originalAmount: booking.netAmount,
           chargeAmount,
@@ -712,22 +714,45 @@ export class BookingsService {
       }
 
       // Auto-lookup fare
-      const fare = await this.prisma.fare.findFirst({
+      let fare = await this.prisma.fare.findFirst({
         where: {
           companyId,
           routeId,
           coachTypeId,
           isActive: true,
-          effectiveFrom: { lte: now },
-          OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }],
         },
         orderBy: { effectiveFrom: 'desc' },
       });
 
+      // Fallback 1: any active fare for this route
+      if (!fare) {
+        fare = await this.prisma.fare.findFirst({
+          where: { companyId, routeId, isActive: true },
+          orderBy: { baseAmount: 'desc' },
+        });
+      }
+
+      // Fallback 2: determine fallback price from route destination
+      let fallbackAmount = new Prisma.Decimal(900);
+      if (!fare) {
+        const route = await this.prisma.route.findUnique({ where: { id: routeId } });
+        const destLower = (route?.destination || '').toLowerCase();
+        const price = destLower.includes('cox')
+          ? 1250
+          : destLower.includes('chittagong')
+          ? 900
+          : destLower.includes('sylhet')
+          ? 850
+          : destLower.includes('rajshahi')
+          ? 750
+          : 900;
+        fallbackAmount = new Prisma.Decimal(price);
+      }
+
       results.push({
         seatId: seatInfo.seatId,
         fareId: fare?.id ?? null,
-        amount: fare?.baseAmount ?? new Prisma.Decimal(0),
+        amount: fare?.baseAmount ?? fallbackAmount,
       });
     }
 

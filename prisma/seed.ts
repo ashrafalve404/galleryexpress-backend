@@ -64,7 +64,7 @@ async function main() {
   // 3. Coach Types
   const acCoachType = await prisma.coachType.upsert({
     where: { id: '00000000-0000-4000-a000-000000000001' },
-    update: {},
+    update: { name: 'AC Executive' },
     create: {
       id: '00000000-0000-4000-a000-000000000001',
       companyId: company.id,
@@ -75,7 +75,7 @@ async function main() {
 
   const nonAcCoachType = await prisma.coachType.upsert({
     where: { id: '00000000-0000-4000-a000-000000000002' },
-    update: {},
+    update: { name: 'Non-AC Deluxe' },
     create: {
       id: '00000000-0000-4000-a000-000000000002',
       companyId: company.id,
@@ -86,7 +86,7 @@ async function main() {
 
   const vipCoachType = await prisma.coachType.upsert({
     where: { id: '00000000-0000-4000-a000-000000000003' },
-    update: {},
+    update: { name: 'VIP Sleeper' },
     create: {
       id: '00000000-0000-4000-a000-000000000003',
       companyId: company.id,
@@ -137,7 +137,7 @@ async function main() {
   for (const c of coachesData) {
     const coach = await prisma.coach.upsert({
       where: { registrationNumber: c.reg },
-      update: {},
+      update: { coachTypeId: c.typeId },
       create: {
         companyId: company.id,
         coachTypeId: c.typeId,
@@ -269,7 +269,7 @@ async function main() {
   ];
 
   let scheduleCounter = 100;
-  for (let dayOffset = 0; dayOffset <= 7; dayOffset++) {
+  for (let dayOffset = 0; dayOffset <= 10; dayOffset++) {
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + dayOffset);
     targetDate.setHours(0, 0, 0, 0);

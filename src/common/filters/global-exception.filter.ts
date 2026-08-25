@@ -33,8 +33,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         code = (res['code'] as string) || this.getCodeFromStatus(status);
         if (Array.isArray(res['message'])) {
           errors = res['message'] as unknown[];
-          message = 'Validation failed';
+          message = (errors as string[]).join(' | ');
           code = 'VALIDATION_ERROR';
+          // Debug: log incoming body for validation failures
+          try {
+            const body = request.body;
+            console.error('[ValidationError] errors:', errors);
+            console.error('[ValidationError] request body:', JSON.stringify(body));
+          } catch { /* noop */ }
         }
       } else {
         message = String(exceptionResponse);
