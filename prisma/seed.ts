@@ -16,6 +16,7 @@ async function main() {
     where: { slug: 'gallery-express' },
     update: {},
     create: {
+      id: '00000000-0000-4000-a000-000000000001',
       name: 'Gallery Express',
       slug: 'gallery-express',
       email: 'galleryexpresslimited@gmail.com',
@@ -160,11 +161,11 @@ async function main() {
     },
   });
 
-  // 5. Coaches
+  // 5. Coaches — All AC Double Deck 30-Seat Fleet
   const coachesData = [
     { num: 'GE-AC-01', reg: 'DHAKA-METRO-BA-11-1001', name: 'Gallery Express Scania AC 01', typeId: acCoachType.id, isAC: true },
-    { num: 'GE-[#NAC-02]', reg: 'DHAKA-METRO-BA-11-1002', name: 'Gallery Express Hino Non-AC 02', typeId: nonAcCoachType.id, isAC: false },
-    { num: 'GE-VIP-03', reg: 'DHAKA-METRO-BA-11-1003', name: 'Gallery Express Volvo VIP 03', typeId: vipCoachType.id, isAC: true },
+    { num: 'GE-AC-02', reg: 'DHAKA-METRO-BA-11-1002', name: 'Gallery Express Scania AC 02', typeId: acCoachType.id, isAC: true },
+    { num: 'GE-AC-03', reg: 'DHAKA-METRO-BA-11-1003', name: 'Gallery Express Volvo AC 03',  typeId: acCoachType.id, isAC: true },
     { num: 'GE-AC-04', reg: 'DHAKA-METRO-BA-11-1004', name: 'Gallery Express Hyundai AC 04', typeId: acCoachType.id, isAC: true },
     { num: 'GE-AC-05', reg: 'DHAKA-METRO-BA-11-1005', name: 'Gallery Express Scania AC 05', typeId: acCoachType.id, isAC: true },
   ];
@@ -173,7 +174,7 @@ async function main() {
   for (const c of coachesData) {
     const coach = await prisma.coach.upsert({
       where: { registrationNumber: c.reg },
-      update: { coachTypeId: c.typeId, totalSeats: 30 },
+      update: { coachTypeId: c.typeId, totalSeats: 30, name: c.name, isAC: true },
       create: {
         companyId: company.id,
         coachTypeId: c.typeId,
@@ -189,7 +190,7 @@ async function main() {
     });
     createdCoaches.push(coach);
 
-    // Create or update 24 seats (12 Lower + 12 Upper)
+    // Create or update 30 seats (15 Lower + 15 Upper)
     for (const item of layoutDoubleDeck1x2Config) {
       const existingSeat = await prisma.seat.findFirst({
         where: { coachId: coach.id, seatNumber: item.label },
@@ -248,26 +249,18 @@ async function main() {
   }
   console.log('✅ Routes created (Dhaka–Cox\'s Bazar corridor, no Comilla stop)');
 
-  // 7. Fares — per route per coach type (no Comilla)
+  // 7. Fares — per route AC Business Class
   const fareEffective = new Date('2026-01-01');
   const faresConfig = [
-    // Dhaka ↔ Cox's Bazar (full route)
-    { routeId: createdRoutes[0].id, coachTypeId: acCoachType.id,    base: 1250 },
-    { routeId: createdRoutes[0].id, coachTypeId: nonAcCoachType.id, base: 850  },
-    { routeId: createdRoutes[0].id, coachTypeId: vipCoachType.id,   base: 1800 },
-    { routeId: createdRoutes[1].id, coachTypeId: acCoachType.id,    base: 1250 },
-    { routeId: createdRoutes[1].id, coachTypeId: nonAcCoachType.id, base: 850  },
-    // Dhaka ↔ Chittagong
-    { routeId: createdRoutes[2].id, coachTypeId: acCoachType.id,    base: 900  },
-    { routeId: createdRoutes[2].id, coachTypeId: nonAcCoachType.id, base: 650  },
-    { routeId: createdRoutes[2].id, coachTypeId: vipCoachType.id,   base: 1200 },
-    { routeId: createdRoutes[3].id, coachTypeId: acCoachType.id,    base: 900  },
-    { routeId: createdRoutes[3].id, coachTypeId: nonAcCoachType.id, base: 650  },
-    // Chittagong ↔ Cox's Bazar
-    { routeId: createdRoutes[4].id, coachTypeId: acCoachType.id,    base: 500  },
-    { routeId: createdRoutes[4].id, coachTypeId: nonAcCoachType.id, base: 350  },
-    { routeId: createdRoutes[5].id, coachTypeId: acCoachType.id,    base: 500  },
-    { routeId: createdRoutes[5].id, coachTypeId: nonAcCoachType.id, base: 350  },
+    // Dhaka ↔ Cox's Bazar: 2000 TK
+    { routeId: createdRoutes[0].id, coachTypeId: acCoachType.id, base: 2000 },
+    { routeId: createdRoutes[1].id, coachTypeId: acCoachType.id, base: 2000 },
+    // Dhaka ↔ Chittagong: 1200 TK
+    { routeId: createdRoutes[2].id, coachTypeId: acCoachType.id, base: 1200 },
+    { routeId: createdRoutes[3].id, coachTypeId: acCoachType.id, base: 1200 },
+    // Chittagong ↔ Cox's Bazar: 800 TK
+    { routeId: createdRoutes[4].id, coachTypeId: acCoachType.id, base: 800 },
+    { routeId: createdRoutes[5].id, coachTypeId: acCoachType.id, base: 800 },
   ];
 
   for (let idx = 0; idx < faresConfig.length; idx++) {
@@ -290,22 +283,26 @@ async function main() {
 
   // 8. Daily Schedules — today + next 7 days (no Comilla routes)
   const scheduleMatrix: { routeIdx: number; coachIdx: number; depTime: string }[] = [
-    // Dhaka → Cox's Bazar (4 daily buses)
+    // Dhaka → Cox's Bazar (5 daily buses including night coach)
     { routeIdx: 0, coachIdx: 0, depTime: '07:00' },
     { routeIdx: 0, coachIdx: 2, depTime: '10:00' },
     { routeIdx: 0, coachIdx: 3, depTime: '15:30' },
     { routeIdx: 0, coachIdx: 4, depTime: '21:00' },
-    // Cox's Bazar → Dhaka (3 daily buses)
+    { routeIdx: 0, coachIdx: 1, depTime: '23:30' },
+    // Cox's Bazar → Dhaka (4 daily buses)
     { routeIdx: 1, coachIdx: 0, depTime: '07:00' },
     { routeIdx: 1, coachIdx: 3, depTime: '14:00' },
     { routeIdx: 1, coachIdx: 4, depTime: '22:00' },
-    // Dhaka → Chittagong (3 daily)
+    { routeIdx: 1, coachIdx: 2, depTime: '23:45' },
+    // Dhaka → Chittagong (4 daily buses including night coach)
     { routeIdx: 2, coachIdx: 1, depTime: '08:00' },
     { routeIdx: 2, coachIdx: 2, depTime: '14:00' },
     { routeIdx: 2, coachIdx: 4, depTime: '20:00' },
-    // Chittagong → Dhaka (2 daily)
+    { routeIdx: 2, coachIdx: 0, depTime: '23:30' },
+    // Chittagong → Dhaka (3 daily)
     { routeIdx: 3, coachIdx: 1, depTime: '07:30' },
     { routeIdx: 3, coachIdx: 3, depTime: '15:00' },
+    { routeIdx: 3, coachIdx: 4, depTime: '23:15' },
     // Chittagong → Cox's Bazar (2 daily)
     { routeIdx: 4, coachIdx: 2, depTime: '09:00' },
     { routeIdx: 4, coachIdx: 3, depTime: '16:00' },
@@ -315,10 +312,11 @@ async function main() {
   ];
 
   let scheduleCounter = 100;
+  const now = new Date();
   for (let dayOffset = 0; dayOffset <= 10; dayOffset++) {
-    const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() + dayOffset);
-    targetDate.setHours(0, 0, 0, 0);
+    const d = new Date(now.getTime() + dayOffset * 86400000);
+    const dateStr = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+    const targetDate = new Date(`${dateStr}T00:00:00.000Z`);
 
     for (const s of scheduleMatrix) {
       const route = createdRoutes[s.routeIdx];
@@ -396,6 +394,75 @@ async function main() {
     });
   }
   console.log('✅ Counters created: 20 Dhaka boarding counters + Chittagong + Cox\'s Bazar');
+
+  // 10. Promotional Offers (1:1 aspect ratio posters)
+  const sampleOffers = [
+    {
+      id: '00000000-0000-4000-a000-000000000080',
+      title: "Cox's Bazar Beach Getaway",
+      subtitle: "Flat 15% instant discount on all AC Business Class tickets to Cox's Bazar",
+      tag: 'EID SPECIAL',
+      imageUrl: '/dest-coxsbazar.png',
+      ctaText: 'Book Ticket',
+      ctaUrl: "/search?from=Dhaka&to=Cox's+Bazar",
+      discountCode: 'COX15',
+      orderIndex: 1,
+    },
+    {
+      id: '00000000-0000-4000-a000-000000000081',
+      title: 'Chittagong Express Saver',
+      subtitle: 'Save ৳200 on return journey bookings between Dhaka and Chittagong',
+      tag: 'POPULAR DEAL',
+      imageUrl: '/dest-chittagong.png',
+      ctaText: 'Claim Offer',
+      ctaUrl: '/search?from=Dhaka&to=Chittagong',
+      discountCode: 'CTG200',
+      orderIndex: 2,
+    },
+    {
+      id: '00000000-0000-4000-a000-000000000082',
+      title: 'bKash Online Cashback',
+      subtitle: 'Get up to 20% instant cashback when paying with bKash online payment gateway',
+      tag: 'CASHBACK',
+      imageUrl: '/dest-sylhet.png',
+      ctaText: 'Pay & Save',
+      ctaUrl: '/search?from=Dhaka&to=Cox%27s+Bazar',
+      discountCode: 'BKASH20',
+      orderIndex: 3,
+    },
+    {
+      id: '00000000-0000-4000-a000-000000000083',
+      title: 'Early Bird Weekend Travel',
+      subtitle: 'Book 3 days in advance and get premium window seat priority with extra reward points',
+      tag: 'LIMITED TIME',
+      imageUrl: '/dest-comilla.png',
+      ctaText: 'Explore Offer',
+      ctaUrl: '/search?from=Chittagong&to=Cox%27s+Bazar',
+      discountCode: 'EARLY2026',
+      orderIndex: 4,
+    },
+  ];
+
+  for (const offer of sampleOffers) {
+    await (prisma as any).offer.upsert({
+      where: { id: offer.id },
+      update: { title: offer.title, subtitle: offer.subtitle, imageUrl: offer.imageUrl, ctaUrl: offer.ctaUrl },
+      create: {
+        id: offer.id,
+        companyId: company.id,
+        title: offer.title,
+        subtitle: offer.subtitle,
+        tag: offer.tag,
+        imageUrl: offer.imageUrl,
+        ctaText: offer.ctaText,
+        ctaUrl: offer.ctaUrl,
+        discountCode: offer.discountCode,
+        orderIndex: offer.orderIndex,
+        status: 'ACTIVE',
+      },
+    });
+  }
+  console.log('✅ Promotional Offers seeded (4 posters)');
 
   console.log('\n🎉 Rich seed completed successfully!');
 }

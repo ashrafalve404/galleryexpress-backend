@@ -187,6 +187,7 @@ model Company {
   counters       Counter[]
   cmsPages       CmsPage[]
   sliders        Slider[]
+  offers         Offer[]
   notifications  Notification[]
   settings_      SystemSetting[]
   auditLogs      AuditLog[]
@@ -777,6 +778,31 @@ model Slider {
 
   @@index([companyId])
   @@map("sliders")
+}
+
+// ==================================================
+// OFFERS / PROMOTIONAL POSTERS
+// ==================================================
+
+model Offer {
+  id           String   @id @default(uuid())
+  companyId    String
+  title        String
+  subtitle     String?
+  tag          String?  // e.g. "SPECIAL OFFER", "EID PROMO", "FLAT 20% OFF"
+  imageUrl     String   // 1:1 aspect ratio poster image
+  ctaText      String?  @default("Book Now")
+  ctaUrl       String?
+  discountCode String?  // e.g. "GE2026", "EID15"
+  orderIndex   Int      @default(0)
+  status       String   @default("ACTIVE") // ACTIVE | INACTIVE
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@map("offers")
 }
 
 // ==================================================

@@ -110,11 +110,24 @@ export class SchedulesService {
   async search(companyId: string, dto: SearchScheduleDto) {
     const originVal = dto.origin || dto.from;
     const destVal = dto.destination || dto.to;
+    const targetCompany = (companyId || dto.companyId || '').trim();
+
+    // Build exact date range: cover the full calendar day in any timezone (UTC±14)
+    // Since seed stores dates as YYYY-MM-DDT00:00:00.000Z, match exactly that UTC date
+    let dateRangeQuery: Prisma.ScheduleWhereInput['departureDate'] = undefined;
+    let searchDateStr: string | undefined;
+    if (dto.date) {
+      searchDateStr = dto.date.split('T')[0];
+      // Exact UTC day start/end — seed stores midnight UTC so this is precise
+      const startOfDay = new Date(`${searchDateStr}T00:00:00.000Z`);
+      const endOfDay = new Date(`${searchDateStr}T23:59:59.999Z`);
+      dateRangeQuery = { gte: startOfDay, lte: endOfDay };
+    }
 
     const where: Prisma.ScheduleWhereInput = {
-      companyId,
       status: 'ACTIVE',
-      ...(dto.date && { departureDate: new Date(dto.date) }),
+      ...(targetCompany ? { companyId: targetCompany } : {}),
+      ...(dateRangeQuery && { departureDate: dateRangeQuery }),
       ...(dto.routeId && { routeId: dto.routeId }),
       ...(originVal || destVal
         ? {
@@ -141,10 +154,8 @@ export class SchedulesService {
       },
     });
 
-    if (dto.date) {
-      const searchDateStr = dto.date.split('T')[0];
-      
-      // Explicitly calculate date & time for Bangladesh Standard Time (Asia/Dhaka)
+    // For today: filter out buses that have already departed (compare BDT time)
+    if (searchDateStr) {
       const bdNowStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Dhaka' });
       const bdDate = new Date(bdNowStr);
       const bdTodayStr = `${bdDate.getFullYear()}-${(bdDate.getMonth() + 1).toString().padStart(2, '0')}-${bdDate.getDate().toString().padStart(2, '0')}`;
@@ -153,13 +164,14 @@ export class SchedulesService {
         const currentHH = bdDate.getHours().toString().padStart(2, '0');
         const currentMM = bdDate.getMinutes().toString().padStart(2, '0');
         const currentTimeStr = `${currentHH}:${currentMM}`;
-
+        // Only return today's buses that haven't departed yet
         return schedules.filter((s) => s.departureTime >= currentTimeStr);
       }
     }
 
     return schedules;
   }
+
 
   async findOne(id: string, companyId: string) {
     const schedule = await this.prisma.schedule.findFirst({

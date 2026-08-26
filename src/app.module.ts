@@ -26,6 +26,7 @@ import { DiscountsModule } from './discounts/discounts.module';
 import { CountersModule } from './counters/counters.module';
 import { CmsModule } from './cms/cms.module';
 import { SlidersModule } from './sliders/sliders.module';
+import { OffersModule } from './offers/offers.module';
 import { ReportsModule } from './reports/reports.module';
 import { SettingsModule } from './settings/settings.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
@@ -66,6 +67,7 @@ import { AppService } from './app.service';
     CountersModule,
     CmsModule,
     SlidersModule,
+    OffersModule,
     ReportsModule,
     SettingsModule,
     AuditLogsModule,

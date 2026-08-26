@@ -738,14 +738,10 @@ export class BookingsService {
         const route = await this.prisma.route.findUnique({ where: { id: routeId } });
         const destLower = (route?.destination || '').toLowerCase();
         const price = destLower.includes('cox')
-          ? 1250
+          ? 2000
           : destLower.includes('chittagong')
-          ? 900
-          : destLower.includes('sylhet')
-          ? 850
-          : destLower.includes('rajshahi')
-          ? 750
-          : 900;
+          ? 1200
+          : 800;
         fallbackAmount = new Prisma.Decimal(price);
       }
 
