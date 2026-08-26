@@ -65,7 +65,7 @@ export class SchedulesController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_AGENT, UserRole.COUNTER_MANAGER, UserRole.STAFF)
   @Post('admin/schedules')
   @ApiOperation({ summary: 'Create schedule (admin)' })
   create(
@@ -77,7 +77,7 @@ export class SchedulesController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_AGENT, UserRole.COUNTER_MANAGER, UserRole.STAFF)
   @Get('admin/schedules')
   @ApiOperation({ summary: 'List all schedules (admin)' })
   findAll(
@@ -89,7 +89,7 @@ export class SchedulesController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_AGENT, UserRole.COUNTER_MANAGER, UserRole.STAFF)
   @Get('admin/schedules/:id')
   @ApiOperation({ summary: 'Get schedule (admin)' })
   findOne(
@@ -123,5 +123,18 @@ export class SchedulesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.schedulesService.cancel(id, user.companyId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Delete('admin/schedules/:id/permanent')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Permanently delete schedule (admin)' })
+  hardRemove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.schedulesService.hardRemove(id, user.companyId);
   }
 }

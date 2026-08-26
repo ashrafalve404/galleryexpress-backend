@@ -38,15 +38,15 @@ export class PublicCountersController {
   @Get('counters')
   @ApiOperation({ summary: 'List counters (public)' })
   findAllPublic(@Query('companyId') companyId?: string) {
-    // If companyId not provided, search default or fallback
-    return this.countersService.findAll(companyId || '');
+    // Public API returns active counters
+    return this.countersService.findAll(companyId || '', 'ACTIVE');
   }
 }
 
 @ApiTags('Admin - Counters')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_AGENT, UserRole.COUNTER_MANAGER, UserRole.STAFF)
 @Controller('api/v1/admin/counters')
 export class CountersController {
   constructor(private readonly countersService: CountersService) {}
@@ -104,5 +104,25 @@ export class CountersController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.countersService.removeUser(id, userId, user.companyId);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Deactivate counter' })
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.countersService.remove(id, user.companyId);
+  }
+
+  @Delete(':id/permanent')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete counter permanently' })
+  hardRemove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.countersService.hardRemove(id, user.companyId);
   }
 }

@@ -105,6 +105,15 @@ export class RoutesService {
     return { message: 'Route deactivated successfully' };
   }
 
+  async hardRemove(id: string, companyId: string) {
+    await this.findOne(id, companyId);
+    await this.prisma.routeStop.deleteMany({ where: { routeId: id } });
+    await this.prisma.fare.deleteMany({ where: { routeId: id } });
+    await this.prisma.schedule.deleteMany({ where: { routeId: id } });
+    await this.prisma.route.delete({ where: { id } });
+    return { message: 'Route deleted permanently' };
+  }
+
   async addStop(routeId: string, companyId: string, dto: CreateRouteStopDto) {
     await this.findOne(routeId, companyId);
     return this.prisma.routeStop.create({

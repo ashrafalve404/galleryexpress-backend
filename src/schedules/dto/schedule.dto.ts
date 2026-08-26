@@ -43,6 +43,8 @@ export class CreateScheduleDto {
 }
 
 export class UpdateScheduleDto {
+  @ApiPropertyOptional() @IsOptional() @IsUUID() coachId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() routeId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() departureDate?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() departureTime?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() arrivalTime?: string;

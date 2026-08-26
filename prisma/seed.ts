@@ -96,31 +96,67 @@ async function main() {
   });
   console.log('✅ Coach types created');
 
-  // 4. Seat Layout (2+2, 40 seats)
-  const layout2x2Config = [];
-  const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-  for (let row = 0; row < 10; row++) {
-    for (let col = 0; col < 4; col++) {
-      layout2x2Config.push({
-        row: row + 1,
-        column: col + 1,
-        seatType: SeatType.REGULAR,
-        label: `${rowLabels[row]}${col + 1}`,
-      });
-    }
-  }
+  // 4. Seat Layout (1+2 Double Deck, 30 seats total: L1..L15, U1..U15)
+  const layoutDoubleDeck1x2Config = [
+    // Lower Deck (15 Seats: L1..L15)
+    { label: 'L1', row: 1, column: 1, deck: 'LOWER' },
+    { label: 'L2', row: 1, column: 2, deck: 'LOWER' },
+    { label: 'L3', row: 1, column: 3, deck: 'LOWER' },
+
+    { label: 'L4', row: 2, column: 1, deck: 'LOWER' },
+    { label: 'L5', row: 2, column: 2, deck: 'LOWER' },
+    { label: 'L6', row: 2, column: 3, deck: 'LOWER' },
+
+    { label: 'L7', row: 3, column: 1, deck: 'LOWER' },
+    { label: 'L8', row: 3, column: 2, deck: 'LOWER' },
+    { label: 'L9', row: 3, column: 3, deck: 'LOWER' },
+
+    { label: 'L10', row: 4, column: 1, deck: 'LOWER' },
+    { label: 'L11', row: 4, column: 2, deck: 'LOWER' },
+    { label: 'L12', row: 4, column: 3, deck: 'LOWER' },
+
+    { label: 'L13', row: 5, column: 1, deck: 'LOWER' },
+    { label: 'L14', row: 5, column: 2, deck: 'LOWER' },
+    { label: 'L15', row: 5, column: 3, deck: 'LOWER' },
+
+    // Upper Deck (15 Seats: U1..U15)
+    { label: 'U1', row: 1, column: 1, deck: 'UPPER' },
+    { label: 'U2', row: 1, column: 2, deck: 'UPPER' },
+    { label: 'U3', row: 1, column: 3, deck: 'UPPER' },
+
+    { label: 'U4', row: 2, column: 1, deck: 'UPPER' },
+    { label: 'U5', row: 2, column: 2, deck: 'UPPER' },
+    { label: 'U6', row: 2, column: 3, deck: 'UPPER' },
+
+    { label: 'U7', row: 3, column: 1, deck: 'UPPER' },
+    { label: 'U8', row: 3, column: 2, deck: 'UPPER' },
+    { label: 'U9', row: 3, column: 3, deck: 'UPPER' },
+
+    { label: 'U10', row: 4, column: 1, deck: 'UPPER' },
+    { label: 'U11', row: 4, column: 2, deck: 'UPPER' },
+    { label: 'U12', row: 4, column: 3, deck: 'UPPER' },
+
+    { label: 'U13', row: 5, column: 1, deck: 'UPPER' },
+    { label: 'U14', row: 5, column: 2, deck: 'UPPER' },
+    { label: 'U15', row: 5, column: 3, deck: 'UPPER' },
+  ];
 
   const seatLayout = await prisma.seatLayout.upsert({
     where: { id: '00000000-0000-4000-a000-000000000010' },
-    update: {},
+    update: {
+      name: '1+2 Double Deck (30 seats)',
+      rows: 5,
+      columns: 3,
+      layoutConfig: layoutDoubleDeck1x2Config,
+    },
     create: {
       id: '00000000-0000-4000-a000-000000000010',
       companyId: company.id,
-      name: '2+2 Standard (40 seats)',
-      rows: 10,
-      columns: 4,
-      layoutConfig: layout2x2Config,
-      description: 'Standard 2+2 seating arrangement',
+      name: '1+2 Double Deck (30 seats)',
+      rows: 5,
+      columns: 3,
+      layoutConfig: layoutDoubleDeck1x2Config,
+      description: 'Double deck 1+2 seating arrangement (15 Lower, 15 Upper)',
     },
   });
 
@@ -137,7 +173,7 @@ async function main() {
   for (const c of coachesData) {
     const coach = await prisma.coach.upsert({
       where: { registrationNumber: c.reg },
-      update: { coachTypeId: c.typeId },
+      update: { coachTypeId: c.typeId, totalSeats: 30 },
       create: {
         companyId: company.id,
         coachTypeId: c.typeId,
@@ -146,26 +182,36 @@ async function main() {
         coachNumber: c.num,
         registrationNumber: c.reg,
         isAC: c.isAC,
-        totalSeats: 40,
+        totalSeats: 30,
         status: CoachStatus.ACTIVE,
-        description: 'Luxury intercity coach equipped with WiFi and charging ports',
+        description: 'Luxury double deck intercity coach equipped with WiFi and charging ports',
       },
     });
     createdCoaches.push(coach);
 
-    // Create 40 seats if not existing
-    const count = await prisma.seat.count({ where: { coachId: coach.id } });
-    if (count === 0) {
-      await prisma.seat.createMany({
-        data: layout2x2Config.map((item) => ({
-          coachId: coach.id,
-          seatNumber: item.label,
-          row: item.row,
-          column: item.column,
-          seatType: SeatType.REGULAR,
-          status: 'AVAILABLE',
-        })),
+    // Create or update 24 seats (12 Lower + 12 Upper)
+    for (const item of layoutDoubleDeck1x2Config) {
+      const existingSeat = await prisma.seat.findFirst({
+        where: { coachId: coach.id, seatNumber: item.label },
       });
+      if (existingSeat) {
+        await prisma.seat.update({
+          where: { id: existingSeat.id },
+          data: { row: item.row, column: item.column, position: item.column === 1 || item.column === 3 ? 'window' : 'aisle' },
+        });
+      } else {
+        await prisma.seat.create({
+          data: {
+            coachId: coach.id,
+            seatNumber: item.label,
+            row: item.row,
+            column: item.column,
+            position: item.column === 1 || item.column === 3 ? 'window' : 'aisle',
+            seatType: SeatType.REGULAR,
+            status: 'AVAILABLE',
+          },
+        });
+      }
     }
   }
   console.log('✅ Coaches and seat maps created');

@@ -17,9 +17,13 @@ export class CountersService {
     return this.prisma.counter.create({ data: { companyId, ...dto } });
   }
 
-  async findAll(companyId?: string) {
+  async findAll(companyId?: string, status?: string) {
+    const whereClause: Record<string, unknown> = {};
+    if (companyId) whereClause.companyId = companyId;
+    if (status) whereClause.status = status;
+
     return this.prisma.counter.findMany({
-      where: companyId ? { companyId, status: 'ACTIVE' } : { status: 'ACTIVE' },
+      where: whereClause,
       include: {
         counterUsers: {
           include: {
@@ -81,5 +85,25 @@ export class CountersService {
       where: { counterId_userId: { counterId, userId } },
     });
     return { message: 'User removed from counter' };
+  }
+
+  async remove(id: string, companyId: string) {
+    await this.findOne(id, companyId);
+    await this.prisma.counter.update({
+      where: { id },
+      data: { status: 'INACTIVE' },
+    });
+    return { message: 'Counter deactivated successfully' };
+  }
+
+  async hardRemove(id: string, companyId: string) {
+    await this.findOne(id, companyId);
+    await this.prisma.counterUser.deleteMany({ where: { counterId: id } });
+    await this.prisma.booking.updateMany({
+      where: { counterId: id },
+      data: { counterId: null },
+    });
+    await this.prisma.counter.delete({ where: { id } });
+    return { message: 'Counter deleted permanently' };
   }
 }

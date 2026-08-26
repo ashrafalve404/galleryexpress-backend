@@ -49,6 +49,8 @@ export class FaresService {
     return this.prisma.fare.update({
       where: { id },
       data: {
+        ...(dto.routeId && { routeId: dto.routeId }),
+        ...(dto.coachTypeId !== undefined && { coachTypeId: dto.coachTypeId || null }),
         ...(dto.baseAmount && {
           baseAmount: new Prisma.Decimal(dto.baseAmount),
         }),
@@ -66,6 +68,16 @@ export class FaresService {
     await this.findOne(id, companyId);
     await this.prisma.fare.update({ where: { id }, data: { isActive: false } });
     return { message: 'Fare deactivated' };
+  }
+
+  async hardRemove(id: string, companyId: string) {
+    await this.findOne(id, companyId);
+    await this.prisma.bookingSeat.updateMany({
+      where: { fareId: id },
+      data: { fareId: null },
+    });
+    await this.prisma.fare.delete({ where: { id } });
+    return { message: 'Fare deleted permanently' };
   }
 
   async getActiveFareForSchedule(

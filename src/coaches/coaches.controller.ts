@@ -46,7 +46,7 @@ class CreateSeatLayoutDto {
 @ApiTags('Admin - Coaches')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_AGENT, UserRole.COUNTER_MANAGER, UserRole.STAFF)
 @Controller('api/v1/admin/coaches')
 export class CoachesController {
   constructor(private readonly coachesService: CoachesService) {}
@@ -65,6 +65,26 @@ export class CoachesController {
     @Query() query: PaginationDto & { status?: CoachStatus },
   ) {
     return this.coachesService.findAll(user.companyId, query);
+  }
+
+  // Coach Types sub-routes (must come before :id route)
+  @Post('types')
+  @ApiOperation({ summary: 'Create coach type' })
+  createCoachType(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateCoachTypeDto,
+  ) {
+    return this.coachesService.createCoachType(
+      user.companyId,
+      dto.name,
+      dto.description,
+    );
+  }
+
+  @Get('types')
+  @ApiOperation({ summary: 'List coach types' })
+  findAllCoachTypes(@CurrentUser() user: AuthenticatedUser) {
+    return this.coachesService.findAllCoachTypes(user.companyId);
   }
 
   @Get(':id')
@@ -108,26 +128,6 @@ export class CoachesController {
       seatLayoutId,
       user.companyId,
     );
-  }
-
-  // Coach Types sub-routes
-  @Post('types')
-  @ApiOperation({ summary: 'Create coach type' })
-  createCoachType(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateCoachTypeDto,
-  ) {
-    return this.coachesService.createCoachType(
-      user.companyId,
-      dto.name,
-      dto.description,
-    );
-  }
-
-  @Get('types')
-  @ApiOperation({ summary: 'List coach types' })
-  findAllCoachTypes(@CurrentUser() user: AuthenticatedUser) {
-    return this.coachesService.findAllCoachTypes(user.companyId);
   }
 
   // Seat Layouts sub-routes

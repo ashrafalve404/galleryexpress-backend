@@ -58,7 +58,7 @@ export class RoutesController {
   // ---- Admin endpoints ----
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_AGENT, UserRole.COUNTER_MANAGER, UserRole.STAFF)
   @Post('admin/routes')
   @ApiOperation({ summary: 'Create route (admin)' })
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateRouteDto) {
@@ -67,7 +67,7 @@ export class RoutesController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_AGENT, UserRole.COUNTER_MANAGER, UserRole.STAFF)
   @Get('admin/routes')
   @ApiOperation({ summary: 'List all routes (admin)' })
   findAll(
@@ -79,7 +79,7 @@ export class RoutesController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_AGENT, UserRole.COUNTER_MANAGER, UserRole.STAFF)
   @Get('admin/routes/:id')
   @ApiOperation({ summary: 'Get route (admin)' })
   findOne(
@@ -113,6 +113,19 @@ export class RoutesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.routesService.remove(id, user.companyId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Delete('admin/routes/:id/permanent')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Permanently delete route (admin)' })
+  hardRemove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.routesService.hardRemove(id, user.companyId);
   }
 
   @ApiBearerAuth()

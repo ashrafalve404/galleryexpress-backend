@@ -179,6 +179,8 @@ export class SchedulesService {
     return this.prisma.schedule.update({
       where: { id },
       data: {
+        ...(dto.coachId && { coachId: dto.coachId }),
+        ...(dto.routeId && { routeId: dto.routeId }),
         ...(dto.departureDate && {
           departureDate: new Date(dto.departureDate),
         }),
@@ -205,6 +207,15 @@ export class SchedulesService {
       where: { id },
       data: { status: 'CANCELLED' },
     });
+  }
+
+  async hardRemove(id: string, companyId: string) {
+    await this.findOne(id, companyId);
+    await this.prisma.ticket.deleteMany({ where: { booking: { scheduleId: id } } });
+    await this.prisma.bookingSeat.deleteMany({ where: { booking: { scheduleId: id } } });
+    await this.prisma.booking.deleteMany({ where: { scheduleId: id } });
+    await this.prisma.schedule.delete({ where: { id } });
+    return { message: 'Schedule deleted permanently' };
   }
 
   async getSeats(scheduleId: string, companyId: string) {

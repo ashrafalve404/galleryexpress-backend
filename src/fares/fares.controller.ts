@@ -25,7 +25,7 @@ import { UserRole } from '@prisma/client';
 @ApiTags('Admin - Fares')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_AGENT, UserRole.COUNTER_MANAGER, UserRole.STAFF)
 @Controller('api/v1/admin/fares')
 export class FaresController {
   constructor(private readonly faresService: FaresService) {}
@@ -72,5 +72,15 @@ export class FaresController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.faresService.remove(id, user.companyId);
+  }
+
+  @Delete(':id/permanent')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete fare permanently' })
+  hardRemove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.faresService.hardRemove(id, user.companyId);
   }
 }
