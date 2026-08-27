@@ -13,8 +13,12 @@ export interface CreateContactMessageDto {
 export class ContactMessagesService {
   constructor(private prisma: PrismaService) {}
 
+  private get model() {
+    return (this.prisma as any).contactMessage;
+  }
+
   async create(dto: CreateContactMessageDto) {
-    return this.prisma.contactMessage.create({
+    return this.model.create({
       data: {
         name: dto.name,
         email: dto.email,
@@ -26,25 +30,25 @@ export class ContactMessagesService {
   }
 
   async findAllAdmin() {
-    return this.prisma.contactMessage.findMany({
+    return this.model.findMany({
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async markAsRead(id: string) {
-    const msg = await this.prisma.contactMessage.findUnique({ where: { id } });
+    const msg = await this.model.findUnique({ where: { id } });
     if (!msg) throw new NotFoundException('Message not found');
 
-    return this.prisma.contactMessage.update({
+    return this.model.update({
       where: { id },
       data: { status: 'READ' },
     });
   }
 
   async remove(id: string) {
-    const msg = await this.prisma.contactMessage.findUnique({ where: { id } });
+    const msg = await this.model.findUnique({ where: { id } });
     if (!msg) throw new NotFoundException('Message not found');
 
-    return this.prisma.contactMessage.delete({ where: { id } });
+    return this.model.delete({ where: { id } });
   }
 }
