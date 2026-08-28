@@ -27,6 +27,13 @@ enum UserStatus {
   PENDING_VERIFICATION
 }
 
+enum KycStatus {
+  NOT_SUBMITTED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 enum UserRole {
   SUPER_ADMIN
   ADMIN
@@ -188,6 +195,7 @@ model Company {
   cmsPages       CmsPage[]
   sliders        Slider[]
   offers         Offer[]
+  bulkOrders     BulkTicketOrder[]
   notifications  Notification[]
   settings_      SystemSetting[]
   auditLogs      AuditLog[]
@@ -219,6 +227,19 @@ model User {
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
 
+  // Agent KYC Verification Fields
+  kycStatus            KycStatus  @default(NOT_SUBMITTED)
+  nidNumber            String?
+  nidDocUrl            String?
+  nidFrontDocUrl       String?
+  nidBackDocUrl        String?
+  counterName          String?
+  counterAddress       String?
+  tradeLicenseNo       String?
+  kycSubmittedAt       DateTime?
+  kycVerifiedAt        DateTime?
+  kycRejectReason      String?
+
   // Relations
   company        Company        @relation(fields: [companyId], references: [id])
   refreshTokens  RefreshToken[]
@@ -227,6 +248,7 @@ model User {
   notifications  Notification[]
   auditLogs      AuditLog[]
   cancellations  Cancellation[]
+  bulkTicketOrders BulkTicketOrder[]
 
   @@index([companyId])
   @@index([email])
@@ -356,6 +378,7 @@ model Route {
   stops     RouteStop[]
   schedules Schedule[]
   fares     Fare[]
+  bulkOrders BulkTicketOrder[]
 
   @@index([companyId])
   @@index([origin, destination])
@@ -470,6 +493,7 @@ model Booking {
   cancelledAt    DateTime?
   expiresAt      DateTime?     // When HELD booking expires
   idempotencyKey String?       @unique
+  bulkOrderId    String?       // Reference to bulk ticket quota order
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -477,6 +501,7 @@ model Booking {
   schedule     Schedule       @relation(fields: [scheduleId], references: [id])
   user         User?          @relation(fields: [userId], references: [id])
   counter      Counter?       @relation(fields: [counterId], references: [id])
+  bulkOrder    BulkTicketOrder? @relation(fields: [bulkOrderId], references: [id])
   bookingSeats BookingSeat[]
   passengers   Passenger[]
   tickets      Ticket[]
@@ -803,6 +828,35 @@ model Offer {
 
   @@index([companyId])
   @@map("offers")
+}
+
+// ==================================================
+// BULK TICKET ORDERS (COUNTER AGENT QUOTAS)
+// ==================================================
+
+model BulkTicketOrder {
+  id                String   @id @default(uuid())
+  companyId         String
+  agentId           String   // Counter Agent User ID (e.g. ABC Travels)
+  routeId           String   // Target Route ID (e.g. Dhaka -> Chittagong)
+  quantity          Int      // Total bulk tickets purchased (e.g. 50)
+  remainingQuantity Int      // Unassigned tickets available (e.g. 50 -> 49 -> 48)
+  unitPrice         Decimal  @db.Decimal(10, 2) // Price per ticket (e.g. 1000)
+  totalAmount       Decimal  @db.Decimal(10, 2) // Total cost (e.g. 50000)
+  status            String   @default("PURCHASED") // PURCHASED | EXHAUSTED | CANCELLED
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id])
+  agent    User      @relation(fields: [agentId], references: [id])
+  route    Route     @relation(fields: [routeId], references: [id])
+  bookings Booking[]
+
+  @@index([companyId])
+  @@index([agentId])
+  @@index([routeId])
+  @@map("bulk_ticket_orders")
 }
 
 // ==================================================

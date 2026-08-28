@@ -60,7 +60,22 @@ async function main() {
       status: 'ACTIVE',
     },
   });
-  console.log('✅ Admin & Counter Agent users active');
+
+  await prisma.user.upsert({
+    where: { email: 'abc@abctravels.com' },
+    update: { phone: '+8801800000000' },
+    create: {
+      companyId: company.id,
+      email: 'abc@abctravels.com',
+      firstName: 'ABC Travels',
+      lastName: 'Agent',
+      phone: '+8801800000000',
+      passwordHash: agentHash,
+      role: UserRole.COUNTER_AGENT,
+      status: 'ACTIVE',
+    },
+  });
+  console.log('✅ Admin & Counter Agent (ABC Travels) users active');
 
   // 3. Coach Types
   const acCoachType = await prisma.coachType.upsert({
