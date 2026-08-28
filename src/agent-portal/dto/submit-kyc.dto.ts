@@ -28,4 +28,8 @@ export class SubmitKycDto {
   @IsOptional()
   @IsString()
   tradeLicenseNo?: string;
+
+  @IsOptional()
+  @IsString()
+  otherDocUrl?: string;
 }

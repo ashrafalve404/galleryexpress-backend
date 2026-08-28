@@ -233,6 +233,7 @@ model User {
   nidDocUrl            String?
   nidFrontDocUrl       String?
   nidBackDocUrl        String?
+  otherDocUrl          String?
   counterName          String?
   counterAddress       String?
   tradeLicenseNo       String?
