@@ -6,14 +6,14 @@ export class AppService {
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),
-      service: 'Gallery Express API',
+      service: 'Ticket Dorkar API',
       version: '1.0.0',
     };
   }
 
   info() {
     return {
-      name: 'Gallery Express Bus Ticket Booking API',
+      name: 'Ticket Dorkar Bus Ticket Booking API',
       version: '1.0.0',
       docs: '/api/docs',
     };

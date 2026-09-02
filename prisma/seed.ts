@@ -17,12 +17,12 @@ async function main() {
     update: {},
     create: {
       id: '00000000-0000-4000-a000-000000000001',
-      name: 'Gallery Express',
+      name: 'Ticket Dorkar',
       slug: 'gallery-express',
-      email: 'galleryexpresslimited@gmail.com',
+      email: 'info@ticketdorkar.xyz',
       phone: '+8801700000000',
       address: 'Navana Shopping Centre, Gulshan Avenue 01, Gulshan, Dhaka, Bangladesh',
-      website: 'https://galleryexpress.com',
+      website: 'https://www.ticketdorkar.xyz',
       status: 'ACTIVE',
     },
   });

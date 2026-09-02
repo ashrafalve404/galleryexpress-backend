@@ -47,9 +47,9 @@ async function bootstrap() {
   // Swagger documentation
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()
-      .setTitle('Gallery Express API')
+      .setTitle('Ticket Dorkar API')
       .setDescription(
-        'Production-grade bus ticket booking backend for Gallery Express',
+        'Production-grade bus ticket booking backend for Ticket Dorkar',
       )
       .setVersion('1.0')
       .addBearerAuth()
