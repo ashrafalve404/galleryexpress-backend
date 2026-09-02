@@ -15,6 +15,7 @@ export class TicketsService {
         passenger: true,
         booking: {
           include: {
+            counter: true,
             schedule: {
               include: {
                 coach: { include: { coachType: true } },
@@ -69,6 +70,7 @@ export class TicketsService {
         passenger: true,
         booking: {
           include: {
+            counter: true,
             schedule: { include: { coach: true, route: true } },
             bookingSeats: { include: { seat: true } },
           },

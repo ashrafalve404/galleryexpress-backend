@@ -25,7 +25,7 @@ import { UserRole } from '@prisma/client';
 @ApiTags('Admin - Fares')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_AGENT, UserRole.COUNTER_MANAGER, UserRole.STAFF)
+@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_MANAGER, UserRole.STAFF)
 @Controller('api/v1/admin/fares')
 export class FaresController {
   constructor(private readonly faresService: FaresService) {}

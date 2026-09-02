@@ -31,7 +31,7 @@ import { ReportsModule } from './reports/reports.module';
 import { SettingsModule } from './settings/settings.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { ContactMessagesModule } from './contact-messages/contact-messages.module';
-import { AgentPortalModule } from './agent-portal/agent-portal.module';
+import { CounterAgentModule } from './counter-agent/counter-agent.module';
 
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -73,7 +73,7 @@ import { AppService } from './app.service';
     SettingsModule,
     AuditLogsModule,
     ContactMessagesModule,
-    AgentPortalModule,
+    CounterAgentModule,
   ],
   controllers: [AppController],
   providers: [

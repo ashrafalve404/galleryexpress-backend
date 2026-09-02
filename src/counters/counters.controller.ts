@@ -46,7 +46,7 @@ export class PublicCountersController {
 @ApiTags('Admin - Counters')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_AGENT, UserRole.COUNTER_MANAGER, UserRole.STAFF)
+@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_MANAGER, UserRole.STAFF)
 @Controller('api/v1/admin/counters')
 export class CountersController {
   constructor(private readonly countersService: CountersService) {}

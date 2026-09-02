@@ -163,6 +163,12 @@ enum SettingType {
   JSON
 }
 
+enum CommissionStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
 // ==================================================
 // TENANT / COMPANY
 // ==================================================
@@ -199,7 +205,8 @@ model Company {
   notifications  Notification[]
   settings_      SystemSetting[]
   auditLogs      AuditLog[]
-  cancellationPolicies CancellationPolicy[]
+  cancellationPolicies        CancellationPolicy[]
+  counterAgentCommissions     CounterAgentCommission[]
 
   @@map("companies")
 }
@@ -241,6 +248,9 @@ model User {
   kycVerifiedAt        DateTime?
   kycRejectReason      String?
 
+  // Counter Agent Assignment
+  assignedCounterId    String?    // Counter agent's home counter
+
   // Relations
   company        Company        @relation(fields: [companyId], references: [id])
   refreshTokens  RefreshToken[]
@@ -249,7 +259,8 @@ model User {
   notifications  Notification[]
   auditLogs      AuditLog[]
   cancellations  Cancellation[]
-  bulkTicketOrders BulkTicketOrder[]
+  bulkTicketOrders        BulkTicketOrder[]
+  counterAgentCommissions CounterAgentCommission[]
 
   @@index([companyId])
   @@index([email])
@@ -508,7 +519,8 @@ model Booking {
   tickets      Ticket[]
   payments     Payment[]
   cancellation Cancellation?
-  discountUsages DiscountUsage[]
+  discountUsages     DiscountUsage[]
+  triggerCommissions CounterAgentCommission[]
 
   @@index([companyId])
   @@index([scheduleId])
@@ -739,9 +751,10 @@ model Counter {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
-  company      Company       @relation(fields: [companyId], references: [id])
-  counterUsers CounterUser[]
-  bookings     Booking[]
+  company         Company       @relation(fields: [companyId], references: [id])
+  counterUsers    CounterUser[]
+  bookings        Booking[]
+  bulkTicketOrders BulkTicketOrder[]
 
   @@index([companyId])
   @@map("counters")
@@ -836,28 +849,60 @@ model Offer {
 // ==================================================
 
 model BulkTicketOrder {
-  id                String   @id @default(uuid())
-  companyId         String
-  agentId           String   // Counter Agent User ID (e.g. ABC Travels)
-  routeId           String   // Target Route ID (e.g. Dhaka -> Chittagong)
-  quantity          Int      // Total bulk tickets purchased (e.g. 50)
-  remainingQuantity Int      // Unassigned tickets available (e.g. 50 -> 49 -> 48)
-  unitPrice         Decimal  @db.Decimal(10, 2) // Price per ticket (e.g. 1000)
-  totalAmount       Decimal  @db.Decimal(10, 2) // Total cost (e.g. 50000)
-  status            String   @default("PURCHASED") // PURCHASED | EXHAUSTED | CANCELLED
-  notes             String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  companyId            String
+  agentId              String   // Counter Agent User ID
+  routeId              String   // Target Route ID (Dhaka <-> Cox's Bazar only)
+  counterId            String?  // Counter this agent is assigned to
+  quantity             Int      // Total bulk tickets purchased (min 10)
+  remainingQuantity    Int      // Unassigned tickets remaining
+  unitPrice            Decimal  @db.Decimal(10, 2) // Fixed ৳2,000 per ticket
+  totalAmount          Decimal  @db.Decimal(10, 2) // quantity × unitPrice
+  commissionCap        Decimal  @db.Decimal(10, 2) // Max commission = totalAmount cumulative
+  commissionEarned     Decimal  @default(0) @db.Decimal(10, 2) // Commission earned so far
+  commissionEligible   Boolean  @default(true)  // true only if bought in batch ≥ 10
+  status               String   @default("ACTIVE") // ACTIVE | EXHAUSTED | CANCELLED
+  notes                String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   company  Company   @relation(fields: [companyId], references: [id])
   agent    User      @relation(fields: [agentId], references: [id])
   route    Route     @relation(fields: [routeId], references: [id])
+  counter  Counter?  @relation(fields: [counterId], references: [id])
   bookings Booking[]
 
   @@index([companyId])
   @@index([agentId])
   @@index([routeId])
   @@map("bulk_ticket_orders")
+}
+
+// ==================================================
+// COUNTER AGENT COMMISSIONS
+// ==================================================
+
+model CounterAgentCommission {
+  id               String           @id @default(uuid())
+  companyId        String
+  agentId          String           // Counter agent receiving this commission
+  triggerBookingId String           // Normal user booking that triggered it
+  totalCommission  Decimal          @db.Decimal(10, 2) // ৳200 total pool
+  agentShare       Decimal          @db.Decimal(10, 2) // ৳200 / N agents = this agent's share
+  totalAgents      Int              // N = how many agents shared this ৳200
+  status           CommissionStatus @default(PENDING)
+  paidAt           DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  company        Company @relation(fields: [companyId], references: [id])
+  agent          User    @relation(fields: [agentId], references: [id])
+  triggerBooking Booking @relation(fields: [triggerBookingId], references: [id])
+
+  @@index([companyId])
+  @@index([agentId])
+  @@index([triggerBookingId])
+  @@map("counter_agent_commissions")
 }
 
 // ==================================================

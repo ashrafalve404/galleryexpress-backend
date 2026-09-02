@@ -49,6 +49,30 @@ export class CreateBookingDto {
   @Type(() => BookingSeatInfoDto)
   seats: BookingSeatInfoDto[];
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (value === '' || value === null ? undefined : value))
+  counterId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (value === '' || value === null ? undefined : value))
+  boardingStopId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (value === '' || value === null ? undefined : value))
+  droppingStopId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (value === '' || value === null ? undefined : value))
+  boardingPoint?: string;
+
   @ApiPropertyOptional() @IsOptional() @IsString() couponCode?: string;
   @ApiPropertyOptional({ enum: BookingSource })
   @IsOptional()

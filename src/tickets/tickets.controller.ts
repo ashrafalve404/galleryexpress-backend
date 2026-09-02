@@ -30,7 +30,6 @@ export class TicketsController {
     UserRole.SUPER_ADMIN,
     UserRole.ADMIN,
     UserRole.COUNTER_MANAGER,
-    UserRole.COUNTER_AGENT,
     UserRole.STAFF,
   )
   @Get('tickets/:ticketNumber/verify')
@@ -48,7 +47,6 @@ export class TicketsController {
     UserRole.SUPER_ADMIN,
     UserRole.ADMIN,
     UserRole.COUNTER_MANAGER,
-    UserRole.COUNTER_AGENT,
     UserRole.STAFF,
   )
   @Get('tickets/qr/:qrToken/verify')
@@ -62,7 +60,7 @@ export class TicketsController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_MANAGER, UserRole.COUNTER_AGENT, UserRole.STAFF)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_MANAGER, UserRole.STAFF)
   @Get('admin/tickets')
   @ApiOperation({ summary: 'List tickets (admin)' })
   adminList(

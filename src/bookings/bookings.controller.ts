@@ -108,7 +108,6 @@ export class BookingsController {
     UserRole.SUPER_ADMIN,
     UserRole.ADMIN,
     UserRole.COUNTER_MANAGER,
-    UserRole.COUNTER_AGENT,
     UserRole.STAFF,
   )
   @Get('admin/bookings')
@@ -126,7 +125,6 @@ export class BookingsController {
     UserRole.SUPER_ADMIN,
     UserRole.ADMIN,
     UserRole.COUNTER_MANAGER,
-    UserRole.COUNTER_AGENT,
   )
   @Post('admin/bookings')
   @ApiOperation({ summary: 'Create booking on behalf of customer (counter)' })

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
   Logger,
   Inject,
 } from '@nestjs/common';
@@ -22,6 +23,7 @@ import {
 import { BookingStatus, PaymentStatus, Prisma } from '@prisma/client';
 import Redis from 'ioredis';
 import * as crypto from 'crypto';
+import { CounterAgentService } from '../counter-agent/counter-agent.service';
 
 @Injectable()
 export class BookingsService {
@@ -32,6 +34,7 @@ export class BookingsService {
     private prisma: PrismaService,
     @Inject(REDIS_CLIENT) private redis: Redis,
     private configService: ConfigService,
+    private counterAgentService: CounterAgentService,
   ) {
     this.seatLockTtl = this.configService.get<number>('app.seatLockTtl') || 300;
   }
@@ -268,7 +271,7 @@ export class BookingsService {
             companyId,
             scheduleId: dto.scheduleId,
             userId,
-            counterId,
+            counterId: counterId || dto.counterId || dto.boardingStopId || null,
             bookingRef,
             status: BookingStatus.HELD,
             totalAmount,
@@ -375,7 +378,7 @@ export class BookingsService {
       throw new BadRequestException('Booking has expired. Please start over.');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const validProviders = ['MANUAL', 'SSLCOMMERZ', 'BKASH', 'NAGAD', 'STRIPE', 'CASH'];
       const rawProvider = (dto.paymentProvider || '').toUpperCase();
       const providerEnum = validProviders.includes(rawProvider) ? (rawProvider as never) : ('MANUAL' as never);
@@ -433,7 +436,21 @@ export class BookingsService {
 
       return { booking: confirmedBooking, payment };
     });
+
+    // Distribute counter agent commission (fire-and-forget, outside transaction)
+    this.counterAgentService
+      .distributeCommission(
+        bookingId,
+        companyId,
+        booking.counterId ?? null,
+      )
+      .catch((err) =>
+        this.logger.warn(`Commission distribution failed for booking ${bookingId}: ${err?.message}`),
+      );
+
+    return result;
   }
+
 
   async cancelBooking(
     bookingId: string,
@@ -447,10 +464,33 @@ export class BookingsService {
         schedule: true,
         bookingSeats: true,
         cancellation: true,
+        passengers: true,
       },
     });
 
     if (!booking) throw new NotFoundException('Booking not found');
+
+    // Security check: verify requesting user owns the booking or is an admin/staff
+    const requestingUser = requestedBy
+      ? await this.prisma.user.findUnique({ where: { id: requestedBy } })
+      : null;
+
+    const isAdminOrStaff =
+      requestingUser?.role === 'SUPER_ADMIN' ||
+      requestingUser?.role === 'ADMIN' ||
+      requestingUser?.role === 'COUNTER_MANAGER' ||
+      requestingUser?.role === 'STAFF';
+
+    const isOwner =
+      (booking.userId && booking.userId === requestedBy) ||
+      (requestingUser?.phone && booking.passengers.some((p) => p.phone === requestingUser.phone)) ||
+      (requestingUser?.email && booking.passengers.some((p) => p.email === requestingUser.email));
+
+    if (!isOwner && !isAdminOrStaff) {
+      throw new ForbiddenException(
+        'You are not authorized to cancel or resell this booking. Only the ticket owner can initiate reselling.',
+      );
+    }
     if (booking.status === BookingStatus.CANCELLED) {
       throw new BadRequestException('Booking is already cancelled');
     }
@@ -647,6 +687,7 @@ export class BookingsService {
         schedule: { include: { coach: true, route: true } },
         tickets: true,
         payments: true,
+        counter: true,
       },
     });
     if (!booking) throw new NotFoundException('Booking not found');
@@ -663,6 +704,7 @@ export class BookingsService {
         schedule: { include: { coach: true, route: true } },
         tickets: true,
         payments: true,
+        counter: true,
       },
     });
   }

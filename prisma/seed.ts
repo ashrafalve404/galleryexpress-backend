@@ -28,9 +28,9 @@ async function main() {
   });
   console.log(`✅ Company: ${company.name} (${company.id})`);
 
-  // 2. Super Admin & Counter Agent
+  // 2. Super Admin + Staff + 3 Counter Agents
   const adminPasswordHash = await argon2.hash('Admin@123456');
-  await prisma.user.upsert({
+  const admin = await prisma.user.upsert({
     where: { email: 'admin@galleryexpress.com' },
     update: { phone: '+8801700000001' },
     create: {
@@ -46,36 +46,59 @@ async function main() {
   });
 
   const agentHash = await argon2.hash('Agent@123456');
-  await prisma.user.upsert({
-    where: { email: 'agent@galleryexpress.com' },
-    update: { phone: '+8801700000002' },
+
+  // Counter Agent 1 — Rashid (will be assigned to Abdullahpur counter)
+  const agent1 = await prisma.user.upsert({
+    where: { email: 'rashid@galleryexpress.com' },
+    update: { phone: '+8801700000010' },
     create: {
       companyId: company.id,
-      email: 'agent@galleryexpress.com',
-      firstName: 'Counter',
-      lastName: 'Agent',
-      phone: '+8801700000002',
+      email: 'rashid@galleryexpress.com',
+      firstName: 'Rashid',
+      lastName: 'Ahmed',
+      phone: '+8801700000010',
       passwordHash: agentHash,
       role: UserRole.COUNTER_AGENT,
       status: 'ACTIVE',
     },
   });
 
-  await prisma.user.upsert({
-    where: { email: 'abc@abctravels.com' },
-    update: { phone: '+8801800000000' },
+  // Counter Agent 2 — Karim (will be assigned to Uttara Azampur counter)
+  const agent2 = await prisma.user.upsert({
+    where: { email: 'karim@galleryexpress.com' },
+    update: { phone: '+8801700000011' },
     create: {
       companyId: company.id,
-      email: 'abc@abctravels.com',
-      firstName: 'ABC Travels',
-      lastName: 'Agent',
-      phone: '+8801800000000',
+      email: 'karim@galleryexpress.com',
+      firstName: 'Karim',
+      lastName: 'Hossain',
+      phone: '+8801700000011',
       passwordHash: agentHash,
       role: UserRole.COUNTER_AGENT,
       status: 'ACTIVE',
     },
   });
-  console.log('✅ Admin & Counter Agent (ABC Travels) users active');
+
+  // Counter Agent 3 — Noman (will be assigned to Bashundhara counter)
+  const agent3 = await prisma.user.upsert({
+    where: { email: 'noman@galleryexpress.com' },
+    update: { phone: '+8801700000012' },
+    create: {
+      companyId: company.id,
+      email: 'noman@galleryexpress.com',
+      firstName: 'Noman',
+      lastName: 'Islam',
+      phone: '+8801700000012',
+      passwordHash: agentHash,
+      role: UserRole.COUNTER_AGENT,
+      status: 'ACTIVE',
+    },
+  });
+  console.log('✅ Admin + 3 Counter Agents created');
+  console.log('   🔑 Admin:   admin@galleryexpress.com / Admin@123456');
+  console.log('   🎟️  Agent1:  rashid@galleryexpress.com / Agent@123456');
+  console.log('   🎟️  Agent2:  karim@galleryexpress.com  / Agent@123456');
+  console.log('   🎟️  Agent3:  noman@galleryexpress.com  / Agent@123456');
 
   // 3. Coach Types
   const acCoachType = await prisma.coachType.upsert({
@@ -478,6 +501,102 @@ async function main() {
     });
   }
   console.log('✅ Promotional Offers seeded (4 posters)');
+
+  // ─── 11. Counter Agent Assignments & Bulk Ticket Orders ────────────────────
+  // Assign agents to counters (Abdullahpur, Azampur, Bashundhara)
+  const counter1Id = '00000000-0000-4000-a000-000000000080'; // Dhaka - Abdullahpur
+  const counter2Id = '00000000-0000-4000-a000-000000000081'; // Dhaka - Uttara Azampur
+  const counter3Id = '00000000-0000-4000-a000-000000000084'; // Dhaka - Bashundhara
+
+  await prisma.user.update({
+    where: { id: agent1.id },
+    data: { assignedCounterId: counter1Id } as any,
+  });
+  await prisma.user.update({
+    where: { id: agent2.id },
+    data: { assignedCounterId: counter2Id } as any,
+  });
+  await prisma.user.update({
+    where: { id: agent3.id },
+    data: { assignedCounterId: counter3Id } as any,
+  });
+  console.log('✅ Counter agents assigned to their counters');
+
+  // Dhaka → Cox's Bazar route ID
+  const dhakaToCoксRoute = createdRoutes[0]; // Dhaka → Cox's Bazar
+  const coxToDhakaRoute  = createdRoutes[1]; // Cox's Bazar → Dhaka
+
+  // Seed initial bulk ticket orders for each agent (qualifying: ≥10 tickets)
+  // Agent 1 — 20 tickets = ৳40,000 investment → commission cap ৳40,000
+  const bulkOrder1Exists = await prisma.bulkTicketOrder.findFirst({ where: { agentId: agent1.id, routeId: dhakaToCoксRoute.id } });
+  if (!bulkOrder1Exists) {
+    await prisma.bulkTicketOrder.create({
+      data: {
+        companyId: company.id,
+        agentId: agent1.id,
+        routeId: dhakaToCoксRoute.id,
+        counterId: counter1Id,
+        quantity: 20,
+        remainingQuantity: 20,
+        unitPrice: 2000,
+        totalAmount: 40000,
+        commissionCap: 40000,
+        commissionEarned: 0,
+        commissionEligible: true,
+        status: 'ACTIVE',
+        notes: 'Initial bulk purchase — 20 tickets (Dhaka → Cox\'s Bazar)',
+      } as any,
+    });
+  }
+
+  // Agent 2 — 15 tickets = ৳30,000 investment → commission cap ৳30,000
+  const bulkOrder2Exists = await prisma.bulkTicketOrder.findFirst({ where: { agentId: agent2.id, routeId: coxToDhakaRoute.id } });
+  if (!bulkOrder2Exists) {
+    await prisma.bulkTicketOrder.create({
+      data: {
+        companyId: company.id,
+        agentId: agent2.id,
+        routeId: coxToDhakaRoute.id,
+        counterId: counter2Id,
+        quantity: 15,
+        remainingQuantity: 15,
+        unitPrice: 2000,
+        totalAmount: 30000,
+        commissionCap: 30000,
+        commissionEarned: 0,
+        commissionEligible: true,
+        status: 'ACTIVE',
+        notes: 'Initial bulk purchase — 15 tickets (Cox\'s Bazar → Dhaka)',
+      } as any,
+    });
+  }
+
+  // Agent 3 — 10 tickets = ৳20,000 investment → commission cap ৳20,000
+  const bulkOrder3Exists = await prisma.bulkTicketOrder.findFirst({ where: { agentId: agent3.id, routeId: dhakaToCoксRoute.id } });
+  if (!bulkOrder3Exists) {
+    await prisma.bulkTicketOrder.create({
+      data: {
+        companyId: company.id,
+        agentId: agent3.id,
+        routeId: dhakaToCoксRoute.id,
+        counterId: counter3Id,
+        quantity: 10,
+        remainingQuantity: 10,
+        unitPrice: 2000,
+        totalAmount: 20000,
+        commissionCap: 20000,
+        commissionEarned: 0,
+        commissionEligible: true,
+        status: 'ACTIVE',
+        notes: 'Initial bulk purchase — 10 tickets (Dhaka → Cox\'s Bazar)',
+      } as any,
+    });
+  }
+  console.log('✅ Bulk Ticket Orders seeded for all 3 counter agents');
+  console.log('   💰 Agent 1 (Rashid): 20 tickets · ৳40,000 cap');
+  console.log('   💰 Agent 2 (Karim):  15 tickets · ৳30,000 cap');
+  console.log('   💰 Agent 3 (Noman):  10 tickets · ৳20,000 cap');
+  console.log('   🔁 Commission split: ৳200 ÷ 3 agents = ~৳66.67 each per normal user booking');
 
   console.log('\n🎉 Rich seed completed successfully!');
 }
