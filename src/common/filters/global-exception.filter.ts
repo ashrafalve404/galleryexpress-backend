@@ -102,8 +102,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       default:
         this.logger.error(`Prisma error ${error.code}:`, error.message);
         return {
-          status: HttpStatus.INTERNAL_SERVER_ERROR,
-          message: 'Database operation failed',
+          status: HttpStatus.BAD_REQUEST,
+          message: error.message || 'Database operation failed',
           code: 'DATABASE_ERROR',
         };
     }

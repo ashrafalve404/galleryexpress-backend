@@ -113,22 +113,25 @@ export class BookingsService {
     userId?: string,
   ) {
     const expiresAt = new Date(Date.now() + this.seatLockTtl * 1000);
-    // Use upsert to handle race conditions at DB level
-    await Promise.all(
-      seatIds.map((seatId) =>
-        this.prisma.seatLock.upsert({
-          where: { scheduleId_seatId: { scheduleId, seatId } },
-          create: {
-            scheduleId,
-            seatId,
-            sessionToken,
-            expiresAt,
-            lockedBy: userId,
-          },
-          update: { sessionToken, expiresAt, lockedBy: userId },
-        }),
-      ),
-    );
+    try {
+      await Promise.all(
+        seatIds.map((seatId) =>
+          this.prisma.seatLock.upsert({
+            where: { scheduleId_seatId: { scheduleId, seatId } },
+            create: {
+              scheduleId,
+              seatId,
+              sessionToken,
+              expiresAt,
+              lockedBy: userId || null,
+            },
+            update: { sessionToken, expiresAt, lockedBy: userId || null },
+          }),
+        ),
+      );
+    } catch (err: any) {
+      this.logger.warn(`upsertDbSeatLocks notice: ${err?.message}`);
+    }
   }
 
   private async releaseRedisLocks(
