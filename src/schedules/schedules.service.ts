@@ -126,7 +126,14 @@ export class SchedulesService {
 
     const where: Prisma.ScheduleWhereInput = {
       status: 'ACTIVE',
-      ...(targetCompany ? { companyId: targetCompany } : {}),
+      ...(targetCompany
+        ? {
+            OR: [
+              { companyId: targetCompany },
+              { companyId: '00000000-0000-4000-a000-000000000001' },
+            ],
+          }
+        : {}),
       ...(dateRangeQuery && { departureDate: dateRangeQuery }),
       ...(dto.routeId && { routeId: dto.routeId }),
       ...(originVal || destVal
@@ -175,7 +182,13 @@ export class SchedulesService {
 
   async findOne(id: string, companyId: string) {
     const schedule = await this.prisma.schedule.findFirst({
-      where: { id, companyId },
+      where: { 
+        id, 
+        OR: [
+          { companyId },
+          { companyId: '00000000-0000-4000-a000-000000000001' },
+        ],
+      },
       include: {
         coach: { include: { coachType: true, seats: true } },
         route: { include: { stops: { orderBy: { sequence: 'asc' } } } },
@@ -221,6 +234,11 @@ export class SchedulesService {
     });
   }
 
+  async remove(id: string, companyId: string) {
+    await this.findOne(id, companyId);
+    return this.prisma.schedule.delete({ where: { id } });
+  }
+
   async hardRemove(id: string, companyId: string) {
     await this.findOne(id, companyId);
     await this.prisma.ticket.deleteMany({ where: { booking: { scheduleId: id } } });
@@ -232,7 +250,13 @@ export class SchedulesService {
 
   async getSeats(scheduleId: string, companyId: string) {
     const schedule = await this.prisma.schedule.findFirst({
-      where: { id: scheduleId, companyId },
+      where: { 
+        id: scheduleId, 
+        OR: [
+          { companyId },
+          { companyId: '00000000-0000-4000-a000-000000000001' },
+        ],
+      },
       include: {
         coach: {
           include: {
