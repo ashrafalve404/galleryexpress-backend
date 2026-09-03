@@ -366,25 +366,34 @@ async function main() {
       const arrM = arrivalTotalMins % 60;
       const arrTime = `${arrH.toString().padStart(2, '0')}:${arrM.toString().padStart(2, '0')}`;
 
-      const scheduleId = `00000000-0000-4000-a000-${scheduleCounter.toString().padStart(12, '0')}`;
-      scheduleCounter++;
-
-      await prisma.schedule.upsert({
-        where: { id: scheduleId },
-        update: { departureDate: targetDate },
-        create: {
-          id: scheduleId,
+      const existingSchedule = await prisma.schedule.findFirst({
+        where: {
           companyId: company.id,
-          coachId: coach.id,
           routeId: route.id,
+          coachId: coach.id,
           departureDate: targetDate,
           departureTime: s.depTime,
-          arrivalTime: arrTime,
-          isRecurring: false,
-          status: 'ACTIVE',
-          notes: `Daily express service (${route.origin} to ${route.destination})`,
         },
       });
+
+      if (!existingSchedule) {
+        const scheduleId = `00000000-0000-4000-a000-${scheduleCounter.toString().padStart(12, '0')}`;
+        await prisma.schedule.create({
+          data: {
+            id: scheduleId,
+            companyId: company.id,
+            coachId: coach.id,
+            routeId: route.id,
+            departureDate: targetDate,
+            departureTime: s.depTime,
+            arrivalTime: arrTime,
+            isRecurring: false,
+            status: 'ACTIVE',
+            notes: `Daily express service (${route.origin} to ${route.destination})`,
+          },
+        });
+      }
+      scheduleCounter++;
     }
   }
   console.log(`✅ ${scheduleCounter - 100} Daily Schedules created across Today and Next 7 Days!`);
