@@ -322,39 +322,87 @@ export class CounterAgentService {
     companyId: string,
     counterId: string | null,
   ) {
-    if (!counterId) return;
-
-    const eligibleOrders = await this.prisma.bulkTicketOrder.findMany({
-      where: { companyId, status: 'ACTIVE', commissionEligible: true } as any,
-    });
-
-    const agentMap = new Map<string, typeof eligibleOrders>();
-    for (const order of eligibleOrders) {
-      const remaining = Number((order as any).commissionCap) - Number((order as any).commissionEarned);
-      if (remaining > 0) {
-        if (!agentMap.has(order.agentId)) agentMap.set(order.agentId, []);
-        agentMap.get(order.agentId)!.push(order);
-      }
-    }
-
-    const eligibleAgentIds = Array.from(agentMap.keys());
-    const n = eligibleAgentIds.length;
-    if (n === 0) return;
-
-    const sharePerAgent = Math.round((COMMISSION_PER_BOOKING / n) * 100) / 100;
-
-    for (const agentId of eligibleAgentIds) {
-      await (this.prisma as any).counterAgentCommission.create({
-        data: {
-          companyId,
-          agentId,
-          triggerBookingId: bookingId,
-          totalCommission: COMMISSION_PER_BOOKING,
-          agentShare: sharePerAgent,
-          totalAgents: n,
-          status: 'HELD_UNTIL_DEPARTURE',
-        },
+    try {
+      // 1. Fetch booking to get schedule & departure date
+      const booking = await this.prisma.booking.findUnique({
+        where: { id: bookingId },
+        include: { schedule: true },
       });
+      if (!booking) return;
+
+      // 2. Fetch all active bulk orders with remaining commission capacity
+      const eligibleOrders = await this.prisma.bulkTicketOrder.findMany({
+        where: { status: 'ACTIVE', commissionEligible: true } as any,
+      });
+
+      const agentMap = new Map<string, typeof eligibleOrders>();
+      for (const order of eligibleOrders) {
+        const remaining = Number((order as any).commissionCap) - Number((order as any).commissionEarned);
+        if (remaining > 0) {
+          if (!agentMap.has(order.agentId)) agentMap.set(order.agentId, []);
+          agentMap.get(order.agentId)!.push(order);
+        }
+      }
+
+      const eligibleAgentIds = Array.from(agentMap.keys());
+      const n = eligibleAgentIds.length;
+      if (n === 0) return;
+
+      const sharePerAgent = Math.round((COMMISSION_PER_BOOKING / n) * 100) / 100;
+
+      // Determine if departure date has arrived or is today (Asia/Dhaka)
+      const nowBstStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' });
+      const depBstStr = booking.schedule?.departureDate
+        ? new Date(booking.schedule.departureDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' })
+        : nowBstStr;
+
+      const isSameDayOrPast = nowBstStr >= depBstStr;
+      const initialStatus = isSameDayOrPast ? 'PENDING' : 'HELD_UNTIL_DEPARTURE';
+
+      for (const agentId of eligibleAgentIds) {
+        // Prevent duplicate commission for same booking + agent
+        const existing = await (this.prisma as any).counterAgentCommission.findFirst({
+          where: { triggerBookingId: bookingId, agentId },
+        });
+
+        if (!existing) {
+          await (this.prisma as any).counterAgentCommission.create({
+            data: {
+              companyId: booking.companyId || companyId || '00000000-0000-4000-a000-000000000001',
+              agentId,
+              triggerBookingId: bookingId,
+              totalCommission: COMMISSION_PER_BOOKING,
+              agentShare: sharePerAgent,
+              totalAgents: n,
+              status: initialStatus,
+            },
+          });
+
+          // If departure date has arrived (same day), immediately credit commissionEarned on BulkOrder
+          if (isSameDayOrPast) {
+            const agentOrders = agentMap.get(agentId) || [];
+            let remainingToAdd = sharePerAgent;
+            for (const order of agentOrders) {
+              if (remainingToAdd <= 0) break;
+              const cap = Number((order as any).commissionCap);
+              const earned = Number((order as any).commissionEarned);
+              const available = cap - earned;
+              const toAdd = Math.min(remainingToAdd, available);
+
+              await this.prisma.bulkTicketOrder.update({
+                where: { id: order.id },
+                data: {
+                  commissionEarned: { increment: toAdd },
+                  status: earned + toAdd >= cap ? 'EXHAUSTED' : 'ACTIVE',
+                } as any,
+              });
+              remainingToAdd -= toAdd;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error distributing counter agent commission:', err);
     }
   }
 

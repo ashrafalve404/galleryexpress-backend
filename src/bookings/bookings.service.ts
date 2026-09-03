@@ -368,6 +368,12 @@ export class BookingsService {
         });
       });
 
+      if (booking?.id) {
+        this.counterAgentService
+          .distributeCommission(booking.id, booking.companyId, booking.counterId ?? null)
+          .catch((err) => this.logger.warn(`Commission distribution notice: ${err?.message}`));
+      }
+
       return booking;
     } catch (error) {
       // Release locks on failure
