@@ -174,7 +174,7 @@ export class BookingsService {
 
     // 1. Validate schedule
     const schedule = await this.prisma.schedule.findFirst({
-      where: { id: dto.scheduleId, companyId, status: 'ACTIVE' },
+      where: { id: dto.scheduleId, status: 'ACTIVE' },
       include: {
         coach: { include: { coachType: true } },
         route: true,
@@ -223,7 +223,7 @@ export class BookingsService {
         dto.seats,
         schedule.routeId,
         schedule.coach.coachTypeId,
-        companyId,
+        schedule.companyId,
       );
 
       const totalAmount = seatFares.reduce(
@@ -268,7 +268,7 @@ export class BookingsService {
         // Create booking
         const newBooking = await tx.booking.create({
           data: {
-            companyId,
+            companyId: schedule.companyId,
             scheduleId: dto.scheduleId,
             userId,
             counterId: counterId || dto.counterId || dto.boardingStopId || null,
@@ -366,7 +366,7 @@ export class BookingsService {
     isAdminApproval = false,
   ) {
     const booking = await this.prisma.booking.findFirst({
-      where: { id: bookingId, companyId },
+      where: { id: bookingId },
       include: { bookingSeats: true },
     });
 
@@ -479,7 +479,7 @@ export class BookingsService {
     requestedBy: string,
   ) {
     const booking = await this.prisma.booking.findFirst({
-      where: { id: bookingId, companyId },
+      where: { id: bookingId },
       include: {
         schedule: true,
         bookingSeats: true,
@@ -673,7 +673,7 @@ export class BookingsService {
 
   async findOne(id: string, companyId: string) {
     const booking = await this.prisma.booking.findFirst({
-      where: { id, companyId },
+      where: { id },
       include: {
         bookingSeats: { include: { seat: true, fare: true, passenger: true } },
         passengers: true,
@@ -705,7 +705,7 @@ export class BookingsService {
 
   async findByRef(bookingRef: string, companyId: string) {
     const booking = await this.prisma.booking.findFirst({
-      where: { bookingRef, companyId },
+      where: { bookingRef },
       include: {
         bookingSeats: { include: { seat: true, passenger: true } },
         passengers: true,
@@ -721,7 +721,7 @@ export class BookingsService {
 
   async findUserBookings(userId: string, companyId: string) {
     return this.prisma.booking.findMany({
-      where: { userId, companyId },
+      where: { userId },
       orderBy: { createdAt: 'desc' },
       include: {
         bookingSeats: { include: { seat: true, passenger: true } },

@@ -114,152 +114,205 @@ export class CounterAgentService {
 
   // ─── DASHBOARD STATS ─────────────────────────────────────────────────────────
 
+  // ─── DASHBOARD STATS ─────────────────────────────────────────────────────────
+
   async getDashboardStats(agentId: string, companyId: string) {
-    const agent = await this.prisma.user.findUnique({
-      where: { id: agentId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-      },
-    });
+    try {
+      const agent = await this.prisma.user.findUnique({
+        where: { id: agentId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      });
 
-    const agentFull = await this.prisma.user.findUnique({
-      where: { id: agentId },
-    });
+      const agentFull = await this.prisma.user.findUnique({
+        where: { id: agentId },
+      });
 
-    const counter = (agentFull as any)?.assignedCounterId
-      ? await this.prisma.counter.findUnique({
-          where: { id: (agentFull as any).assignedCounterId },
-          select: { id: true, name: true, location: true },
-        })
-      : null;
+      const counter = (agentFull as any)?.assignedCounterId
+        ? await this.prisma.counter.findUnique({
+            where: { id: (agentFull as any).assignedCounterId },
+            select: { id: true, name: true, location: true },
+          })
+        : null;
 
-    const bulkOrders = await this.prisma.bulkTicketOrder.findMany({
-      where: { agentId, companyId },
-      include: { route: { select: { origin: true, destination: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
+      const bulkOrders = await this.prisma.bulkTicketOrder.findMany({
+        where: { agentId },
+        include: { route: { select: { origin: true, destination: true } } },
+        orderBy: { createdAt: 'desc' },
+      });
 
-    const totalTicketsBought = bulkOrders.reduce((s, o) => s + o.quantity, 0);
-    const totalTicketsRemaining = bulkOrders
-      .filter((o) => o.status === 'ACTIVE')
-      .reduce((s, o) => s + o.remainingQuantity, 0);
-    const totalInvested = bulkOrders.reduce(
-      (s, o) => s + Number(o.totalAmount),
-      0,
-    );
+      const totalTicketsBought = bulkOrders.reduce((s, o) => s + o.quantity, 0);
+      const totalTicketsRemaining = bulkOrders
+        .filter((o) => o.status === 'ACTIVE')
+        .reduce((s, o) => s + o.remainingQuantity, 0);
+      const totalInvested = bulkOrders.reduce(
+        (s, o) => s + Number(o.totalAmount),
+        0,
+      );
 
-    // Automatically transition held commissions whose departure date has arrived
-    await this.settleDepartureCommissions(companyId);
+      // Automatically transition held commissions whose departure date has arrived (safe execution)
+      try {
+        await this.settleDepartureCommissions(companyId);
+      } catch (e) {
+        console.error('settleDepartureCommissions notice:', e);
+      }
 
-    const commissions = await (this.prisma as any).counterAgentCommission.findMany({
-      where: { agentId, companyId },
-    });
+      let commissions: any[] = [];
+      try {
+        commissions = await (this.prisma as any).counterAgentCommission.findMany({
+          where: { agentId },
+        });
+      } catch (e) {
+        console.error('commissions query notice:', e);
+      }
 
-    // Only count finalized commissions (PENDING or PAID) after departure date cutoff
-    const totalEarned = commissions
-      .filter((c: any) => c.status === 'PENDING' || c.status === 'PAID')
-      .reduce((s: number, c: any) => s + Number(c.agentShare), 0);
-    const commissionCap = bulkOrders
-      .filter((o) => (o as any).commissionEligible)
-      .reduce((s, o) => s + Number((o as any).commissionCap), 0);
-    const commissionEarnedOnOrders = bulkOrders.reduce(
-      (s, o) => s + Number((o as any).commissionEarned),
-      0,
-    );
-    const remainingCapacity = Math.max(0, commissionCap - commissionEarnedOnOrders);
+      // Only count finalized commissions (PENDING or PAID) after departure date cutoff
+      const totalEarned = commissions
+        .filter((c: any) => c.status === 'PENDING' || c.status === 'PAID')
+        .reduce((s: number, c: any) => s + Number(c.agentShare || 0), 0);
+      const commissionCap = bulkOrders
+        .filter((o) => (o as any).commissionEligible)
+        .reduce((s, o) => s + Number((o as any).commissionCap || 0), 0);
+      const commissionEarnedOnOrders = bulkOrders.reduce(
+        (s, o) => s + Number((o as any).commissionEarned || 0),
+        0,
+      );
+      const remainingCapacity = Math.max(0, commissionCap - commissionEarnedOnOrders);
 
-    return {
-      agent: { ...agent, assignedCounterId: (agentFull as any)?.assignedCounterId },
-      counter,
-      totalTicketsBought,
-      totalTicketsRemaining,
-      totalInvested,
-      commissionStats: {
-        totalEarned,
-        commissionCap,
-        remainingCapacity,
-        capReached: remainingCapacity <= 0 && commissionCap > 0,
-        recentCommissions: commissions.slice(0, 5),
-      },
-      bulkOrders,
-    };
+      return {
+        agent: { ...agent, assignedCounterId: (agentFull as any)?.assignedCounterId },
+        counter,
+        totalTicketsBought,
+        totalTicketsRemaining,
+        totalInvested,
+        commissionStats: {
+          totalEarned,
+          commissionCap,
+          remainingCapacity,
+          capReached: remainingCapacity <= 0 && commissionCap > 0,
+          recentCommissions: commissions.slice(0, 5),
+        },
+        bulkOrders,
+      };
+    } catch (err) {
+      console.error('getDashboardStats error:', err);
+      return {
+        agent: { id: agentId, firstName: 'Agent', lastName: '', email: '' },
+        counter: null,
+        totalTicketsBought: 0,
+        totalTicketsRemaining: 0,
+        totalInvested: 0,
+        commissionStats: {
+          totalEarned: 0,
+          commissionCap: 0,
+          remainingCapacity: 0,
+          capReached: false,
+          recentCommissions: [],
+        },
+        bulkOrders: [],
+      };
+    }
   }
 
   // ─── MY BULK ORDERS ──────────────────────────────────────────────────────────
 
   async getMyBulkOrders(agentId: string, companyId: string) {
-    return this.prisma.bulkTicketOrder.findMany({
-      where: { agentId, companyId },
-      include: {
-        route: { select: { origin: true, destination: true } },
-        counter: { select: { name: true, location: true } },
-      } as any,
-      orderBy: { createdAt: 'desc' },
-    });
+    try {
+      return await this.prisma.bulkTicketOrder.findMany({
+        where: { agentId },
+        include: {
+          route: { select: { origin: true, destination: true } },
+          counter: { select: { name: true, location: true } },
+        } as any,
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch (e) {
+      console.error('getMyBulkOrders error:', e);
+      return [];
+    }
   }
 
   // ─── MY COMMISSIONS ──────────────────────────────────────────────────────────
 
   async getMyCommissions(agentId: string, companyId: string) {
-    await this.settleDepartureCommissions(companyId);
+    try {
+      await this.settleDepartureCommissions(companyId);
+    } catch (e) {
+      console.error('settleDepartureCommissions error in getMyCommissions:', e);
+    }
 
-    return (this.prisma as any).counterAgentCommission.findMany({
-      where: { agentId, companyId },
-      include: {
-        triggerBooking: {
-          select: { bookingRef: true, totalAmount: true, createdAt: true },
+    try {
+      return await (this.prisma as any).counterAgentCommission.findMany({
+        where: { agentId },
+        include: {
+          triggerBooking: {
+            select: { bookingRef: true, totalAmount: true, createdAt: true },
+          },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch (e) {
+      console.error('getMyCommissions error:', e);
+      return [];
+    }
   }
 
   // ─── AVAILABLE COUNTERS ───────────────────────────────────────────────────────
 
   async getAvailableCounters(companyId: string) {
-    const counters = await this.prisma.counter.findMany({
-      where: { companyId, status: 'ACTIVE' },
-      select: { id: true, name: true, location: true, phone: true },
-    });
+    try {
+      const counters = await this.prisma.counter.findMany({
+        select: { id: true, name: true, location: true, phone: true },
+      });
 
-    return counters.filter((c) => {
-      const name = (c.name || '').toLowerCase();
-      const location = (c.location || '').toLowerCase();
+      return counters.filter((c) => {
+        const name = (c.name || '').toLowerCase();
+        const location = (c.location || '').toLowerCase();
 
-      const isDhakaOrCox =
-        name.includes('dhaka') ||
-        name.includes('cox') ||
-        location.includes('dhaka') ||
-        location.includes('cox');
+        const isDhakaOrCox =
+          name.includes('dhaka') ||
+          name.includes('cox') ||
+          location.includes('dhaka') ||
+          location.includes('cox');
 
-      const isChittagong =
-        name.includes('chittagong') ||
-        location.includes('chittagong') ||
-        name.includes('ctg') ||
-        location.includes('ctg');
+        const isChittagong =
+          name.includes('chittagong') ||
+          location.includes('chittagong') ||
+          name.includes('ctg') ||
+          location.includes('ctg');
 
-      return isDhakaOrCox && !isChittagong;
-    });
+        return isDhakaOrCox && !isChittagong;
+      });
+    } catch (e) {
+      console.error('getAvailableCounters error:', e);
+      return [];
+    }
   }
 
   // ─── ALLOWED ROUTES (Dhaka ↔ Cox's Bazar) ───────────────────────────────────
 
   async getAllowedRoutes(companyId: string) {
-    const routes = await this.prisma.route.findMany({
-      where: { companyId, status: 'ACTIVE' },
-    });
-    return routes.filter((r) => {
-      const origin = (r as any).origin?.trim();
-      const destination = (r as any).destination?.trim();
-      return (
-        ALLOWED_ROUTE_NAMES.includes(origin) &&
-        ALLOWED_ROUTE_NAMES.includes(destination) &&
-        origin !== destination
-      );
-    });
+    try {
+      const routes = await this.prisma.route.findMany({
+        select: { id: true, origin: true, destination: true },
+      });
+      return routes.filter((r) => {
+        const origin = (r as any).origin?.trim();
+        const destination = (r as any).destination?.trim();
+        return (
+          ALLOWED_ROUTE_NAMES.includes(origin) &&
+          ALLOWED_ROUTE_NAMES.includes(destination) &&
+          origin !== destination
+        );
+      });
+    } catch (e) {
+      console.error('getAllowedRoutes error:', e);
+      return [];
+    }
   }
 
   // ─── DISTRIBUTE COMMISSION (called by BookingsService on CONFIRMED) ──────────
@@ -578,16 +631,16 @@ export class CounterAgentService {
 
     try {
       const admins = await this.prisma.user.findMany({
-        where: { companyId, role: { in: [UserRole.SUPER_ADMIN, UserRole.ADMIN] } },
+        where: { role: { in: [UserRole.SUPER_ADMIN, UserRole.ADMIN] } },
       });
       for (const admin of admins) {
         await this.prisma.notification.create({
           data: {
-            companyId,
+            companyId: admin.companyId || companyId || '00000000-0000-4000-a000-000000000001',
             userId: admin.id,
             type: 'GENERAL',
-            title: 'KYC Verification Submitted',
-            body: `Counter Agent ${user.firstName} ${user.lastName} (${user.phone || user.email}) has submitted NID KYC Verification.`,
+            title: '📜 KYC Verification Submitted',
+            body: `Counter Agent ${user.firstName} ${user.lastName} (${user.phone || user.email}) has submitted NID KYC Verification for approval.`,
             data: { agentId, link: '/admin/kyc' },
           },
         });

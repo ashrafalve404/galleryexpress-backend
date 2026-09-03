@@ -103,7 +103,47 @@ export class NotificationsService {
       });
     }
 
-    // 3. New Contact Messages
+    // 3. Pending Counter Agent KYC Verifications
+    try {
+      const pendingKycAgents = await this.prisma.user.findMany({
+        where: {
+          role: 'COUNTER_AGENT',
+          kycStatus: 'PENDING',
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          nidNumber: true,
+          kycSubmittedAt: true,
+        },
+        orderBy: { kycSubmittedAt: 'desc' },
+        take: 30,
+      });
+
+      for (const agent of pendingKycAgents) {
+        items.push({
+          id: `kyc_${agent.id}`,
+          type: 'KYC_VERIFICATION_APPROVAL',
+          category: 'AGENT_BULK',
+          title: `Counter Agent KYC Verification Needed`,
+          body: `${agent.firstName} ${agent.lastName} (${agent.phone || agent.email}) submitted NID documents (NID: ${agent.nidNumber || 'N/A'}). Admin review required.`,
+          link: '/admin/kyc',
+          createdAt: agent.kycSubmittedAt || new Date(),
+          read: false,
+          meta: {
+            agentId: agent.id,
+            nidNumber: agent.nidNumber,
+          },
+        });
+      }
+    } catch {
+      // Ignore if kyc status enum query error
+    }
+
+    // 4. New Contact Messages
     try {
       const unreadMessages = await (this.prisma as any).contactMessage.findMany({
         where: { companyId },
