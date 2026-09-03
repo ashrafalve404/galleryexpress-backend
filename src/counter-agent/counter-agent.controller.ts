@@ -32,6 +32,12 @@ class AssignCounterDto {
   @ApiProperty() @IsUUID() counterId: string;
 }
 
+class SubmitKycDto {
+  @ApiProperty() @IsString() nidNumber: string;
+  @ApiProperty() @IsString() nidFrontDocUrl: string;
+  @ApiProperty() @IsString() nidBackDocUrl: string;
+}
+
 @ApiTags('Counter Agent Portal')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -39,6 +45,50 @@ class AssignCounterDto {
 @Controller('api/v1/counter-agent')
 export class CounterAgentController {
   constructor(private readonly svc: CounterAgentService) {}
+
+  @Post('kyc/submit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Submit NID KYC Verification documents' })
+  submitKyc(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SubmitKycDto,
+  ) {
+    return this.svc.submitKyc(user.id, user.companyId, dto);
+  }
+
+  @Get('kyc/status')
+  @ApiOperation({ summary: 'Get current agent KYC verification status' })
+  getKycStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.getKycStatus(user.id);
+  }
+
+  @Get('admin/kyc/requests')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'List counter agent KYC verification requests' })
+  getAdminKycRequests(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.getAdminKycRequests(user.companyId);
+  }
+
+  @Post('admin/kyc/:agentId/approve')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Approve counter agent KYC verification' })
+  approveKyc(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('agentId') agentId: string,
+  ) {
+    return this.svc.approveKyc(agentId, user.companyId, user.id);
+  }
+
+  @Post('admin/kyc/:agentId/reject')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Reject counter agent KYC verification' })
+  rejectKyc(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('agentId') agentId: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.svc.rejectKyc(agentId, user.companyId, body?.reason);
+  }
 
   @Post('buy-bulk')
   @HttpCode(HttpStatus.CREATED)

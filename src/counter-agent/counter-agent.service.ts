@@ -61,6 +61,12 @@ export class CounterAgentService {
     const agent = await this.prisma.user.findUnique({ where: { id: agentId } });
     if (!agent) throw new NotFoundException('Agent account not found.');
 
+    if (agent.kycStatus !== 'VERIFIED') {
+      throw new BadRequestException(
+        'KYC Verification Required. Please upload your NID Front & Back images and wait for Admin approval before purchasing bulk tickets.',
+      );
+    }
+
     const bulkOrder = await this.prisma.bulkTicketOrder.create({
       data: {
         companyId,
@@ -545,6 +551,168 @@ export class CounterAgentService {
       where: { id: commissionId, companyId },
       data: { status: 'PAID' },
     });
+  }
+
+  // ─── KYC VERIFICATION METHODS ───────────────────────────────────────────────
+
+  async submitKyc(
+    agentId: string,
+    companyId: string,
+    dto: { nidNumber: string; nidFrontDocUrl: string; nidBackDocUrl: string },
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: agentId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const updated = await this.prisma.user.update({
+      where: { id: agentId },
+      data: {
+        nidNumber: dto.nidNumber,
+        nidFrontDocUrl: dto.nidFrontDocUrl,
+        nidBackDocUrl: dto.nidBackDocUrl,
+        nidDocUrl: dto.nidFrontDocUrl,
+        kycStatus: 'PENDING',
+        kycSubmittedAt: new Date(),
+        kycRejectReason: null,
+      },
+    });
+
+    try {
+      const admins = await this.prisma.user.findMany({
+        where: { companyId, role: { in: [UserRole.SUPER_ADMIN, UserRole.ADMIN] } },
+      });
+      for (const admin of admins) {
+        await this.prisma.notification.create({
+          data: {
+            companyId,
+            userId: admin.id,
+            type: 'GENERAL',
+            title: 'KYC Verification Submitted',
+            body: `Counter Agent ${user.firstName} ${user.lastName} (${user.phone || user.email}) has submitted NID KYC Verification.`,
+            data: { agentId, link: '/admin/kyc' },
+          },
+        });
+      }
+    } catch {
+      // ignore notification failures
+    }
+
+    return updated;
+  }
+
+  async getKycStatus(agentId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: agentId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        kycStatus: true,
+        nidNumber: true,
+        nidFrontDocUrl: true,
+        nidBackDocUrl: true,
+        kycSubmittedAt: true,
+        kycVerifiedAt: true,
+        kycRejectReason: true,
+      },
+    });
+    return user;
+  }
+
+  async getAdminKycRequests(companyId: string) {
+    const agents = await this.prisma.user.findMany({
+      where: { companyId, role: UserRole.COUNTER_AGENT },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        assignedCounterId: true,
+        kycStatus: true,
+        nidNumber: true,
+        nidFrontDocUrl: true,
+        nidBackDocUrl: true,
+        kycSubmittedAt: true,
+        kycVerifiedAt: true,
+        kycRejectReason: true,
+        createdAt: true,
+      },
+      orderBy: { kycSubmittedAt: 'desc' },
+    });
+
+    const counters = await this.prisma.counter.findMany({
+      where: { companyId },
+      select: { id: true, name: true, location: true },
+    });
+    const counterMap = new Map(counters.map((c) => [c.id, c]));
+
+    return agents.map((agent) => ({
+      ...agent,
+      counter: agent.assignedCounterId ? counterMap.get(agent.assignedCounterId) ?? null : null,
+    }));
+  }
+
+  async approveKyc(agentId: string, companyId: string, adminId: string) {
+    const agent = await this.prisma.user.findUnique({ where: { id: agentId, companyId } });
+    if (!agent) throw new NotFoundException('Agent not found');
+
+    const updated = await this.prisma.user.update({
+      where: { id: agentId },
+      data: {
+        kycStatus: 'VERIFIED',
+        kycVerifiedAt: new Date(),
+        kycRejectReason: null,
+      },
+    });
+
+    try {
+      await this.prisma.notification.create({
+        data: {
+          companyId,
+          userId: agentId,
+          type: 'GENERAL',
+          title: 'KYC Verification Approved',
+          body: 'Your NID KYC Verification has been approved by Admin! You can now purchase bulk ticket quotas.',
+          data: { link: '/counter-agent/buy-bulk' },
+        },
+      });
+    } catch {
+      // ignore
+    }
+
+    return updated;
+  }
+
+  async rejectKyc(agentId: string, companyId: string, reason?: string) {
+    const agent = await this.prisma.user.findUnique({ where: { id: agentId, companyId } });
+    if (!agent) throw new NotFoundException('Agent not found');
+
+    const updated = await this.prisma.user.update({
+      where: { id: agentId },
+      data: {
+        kycStatus: 'REJECTED',
+        kycRejectReason: reason || 'Invalid or unreadable NID documents.',
+      },
+    });
+
+    try {
+      await this.prisma.notification.create({
+        data: {
+          companyId,
+          userId: agentId,
+          type: 'GENERAL',
+          title: 'KYC Verification Rejected',
+          body: `Your NID KYC Verification was rejected: ${reason || 'Invalid NID documents'}. Please re-upload clear NID images.`,
+          data: { link: '/counter-agent/kyc' },
+        },
+      });
+    } catch {
+      // ignore
+    }
+
+    return updated;
   }
 }
 
