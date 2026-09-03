@@ -175,4 +175,28 @@ export class UsersService {
       },
     });
   }
+
+  async remove(id: string, companyId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, companyId },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Delete associated agent commissions and bulk ticket orders if counter agent
+      await (tx as any).counterAgentCommission?.deleteMany({
+        where: { OR: [{ agentId: id }, { triggerBookingId: id }] },
+      });
+      await (tx as any).bulkTicketOrder?.deleteMany({ where: { agentId: id } });
+
+      // 2. Delete user sessions, refresh tokens, audit logs, notifications
+      await (tx as any).userSession?.deleteMany({ where: { userId: id } });
+      await (tx as any).refreshToken?.deleteMany({ where: { userId: id } });
+      await (tx as any).notification?.deleteMany({ where: { userId: id } });
+      await (tx as any).auditLog?.deleteMany({ where: { userId: id } });
+
+      // 3. Delete user
+      return tx.user.delete({ where: { id } });
+    });
+  }
 }

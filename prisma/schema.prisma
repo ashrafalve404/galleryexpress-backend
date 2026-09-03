@@ -164,6 +164,7 @@ enum SettingType {
 }
 
 enum CommissionStatus {
+  HELD_UNTIL_DEPARTURE
   PENDING
   PAID
   CANCELLED
@@ -506,6 +507,13 @@ model Booking {
   expiresAt      DateTime?     // When HELD booking expires
   idempotencyKey String?       @unique
   bulkOrderId    String?       // Reference to bulk ticket quota order
+  paymentMethod  String?       // BKASH | NAGAD | ROCKET | CASH
+  senderPhone    String?       // User's mobile banking sender number
+  trxId          String?       // User's transaction ID
+  paymentNotes   String?       // User / Counter notes
+  rejectionReason String?      // Admin rejection reason
+  approvedAt     DateTime?
+  approvedBy     String?       // Admin User ID who approved
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -860,8 +868,15 @@ model BulkTicketOrder {
   totalAmount          Decimal  @db.Decimal(10, 2) // quantity × unitPrice
   commissionCap        Decimal  @db.Decimal(10, 2) // Max commission = totalAmount cumulative
   commissionEarned     Decimal  @default(0) @db.Decimal(10, 2) // Commission earned so far
-  commissionEligible   Boolean  @default(true)  // true only if bought in batch ≥ 10
-  status               String   @default("ACTIVE") // ACTIVE | EXHAUSTED | CANCELLED
+  commissionEligible   Boolean  @default(true) // true only if bought in batch ≥ 10
+  status               String   @default("PENDING_APPROVAL") // PENDING_APPROVAL | ACTIVE | EXHAUSTED | REJECTED | CANCELLED
+  paymentMethod        String?  // BKASH | NAGAD | ROCKET | DIRECT_CASH | BANK_TRANSFER
+  senderPhone          String?  // Agent's mobile banking sending number
+  trxId                String?  // Mobile Banking Transaction ID
+  paymentNotes         String?  // Additional payment notes / cash receipt info
+  rejectionReason      String?  // Admin rejection reason if payment is invalid
+  approvedAt           DateTime?
+  approvedBy           String?  // Admin User ID who approved
   notes                String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt

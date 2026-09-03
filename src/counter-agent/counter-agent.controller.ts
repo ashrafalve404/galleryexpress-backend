@@ -16,12 +16,16 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '@prisma/client';
-import { IsInt, IsString, IsUUID, Min } from 'class-validator';
+import { IsInt, IsString, IsUUID, Min, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 class BuyBulkDto {
   @ApiProperty() @IsUUID() routeId: string;
   @ApiProperty({ minimum: 10 }) @IsInt() @Min(10) quantity: number;
+  @ApiProperty({ required: false }) @IsOptional() @IsString() paymentMethod?: string;
+  @ApiProperty({ required: false }) @IsOptional() @IsString() senderPhone?: string;
+  @ApiProperty({ required: false }) @IsOptional() @IsString() trxId?: string;
+  @ApiProperty({ required: false }) @IsOptional() @IsString() paymentNotes?: string;
 }
 
 class AssignCounterDto {
@@ -116,14 +120,25 @@ export class CounterAgentController {
     return this.svc.getAdminCommissions(user.companyId);
   }
 
-  @Post('admin/commissions/:id/pay')
+  @Post('admin/bulk-orders/:id/approve')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Mark an agent commission as PAID' })
-  markCommissionPaid(
+  @ApiOperation({ summary: 'Approve agent bulk ticket payment order' })
+  approveBulkOrder(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('id') commissionId: string,
+    @Param('id') orderId: string,
   ) {
-    return this.svc.markCommissionPaid(commissionId, user.companyId);
+    return this.svc.approveBulkOrder(orderId, user.companyId, user.id);
+  }
+
+  @Post('admin/bulk-orders/:id/reject')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Reject agent bulk ticket payment order' })
+  rejectBulkOrder(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') orderId: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.svc.rejectBulkOrder(orderId, user.companyId, user.id, body?.reason);
   }
 }
 

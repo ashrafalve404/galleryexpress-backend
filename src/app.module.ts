@@ -32,6 +32,7 @@ import { SettingsModule } from './settings/settings.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { ContactMessagesModule } from './contact-messages/contact-messages.module';
 import { CounterAgentModule } from './counter-agent/counter-agent.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -74,6 +75,7 @@ import { AppService } from './app.service';
     AuditLogsModule,
     ContactMessagesModule,
     CounterAgentModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [

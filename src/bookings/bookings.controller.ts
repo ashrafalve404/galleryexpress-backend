@@ -152,4 +152,31 @@ export class BookingsController {
   ) {
     return this.bookingsService.deleteBooking(id, user.companyId);
   }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_MANAGER)
+  @Post('admin/bookings/:id/approve-payment')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Approve user ticket payment (Admin)' })
+  approveUserBookingPayment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.bookingsService.approveUserBookingPayment(id, user.companyId, user.id);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_MANAGER)
+  @Post('admin/bookings/:id/reject-payment')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reject user ticket payment (Admin)' })
+  rejectUserBookingPayment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { reason?: string },
+  ) {
+    return this.bookingsService.rejectUserBookingPayment(id, user.companyId, user.id, body?.reason);
+  }
 }

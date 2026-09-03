@@ -280,10 +280,14 @@ export class BookingsService {
             paymentStatus: PaymentStatus.PENDING,
             source: dto.source ?? 'ONLINE',
             notes: dto.notes,
+            paymentMethod: dto.paymentMethod || null,
+            senderPhone: dto.senderPhone || null,
+            trxId: dto.trxId || null,
+            paymentNotes: dto.paymentNotes || null,
             heldAt: new Date(),
             expiresAt,
             idempotencyKey: dto.idempotencyKey,
-          },
+          } as any,
         });
 
         // Create passengers and booking seats
@@ -359,6 +363,7 @@ export class BookingsService {
     companyId: string,
     dto: ConfirmBookingDto,
     _userId?: string,
+    isAdminApproval = false,
   ) {
     const booking = await this.prisma.booking.findFirst({
       where: { id: bookingId, companyId },
@@ -369,11 +374,26 @@ export class BookingsService {
     if (booking.status === BookingStatus.CONFIRMED) {
       return booking; // Already confirmed
     }
-    if (booking.status !== BookingStatus.HELD) {
-      throw new BadRequestException(
-        `Cannot confirm booking in status: ${booking.status}`,
-      );
+
+    // If user is submitting payment details (Not Admin approval yet)
+    if (!isAdminApproval) {
+      const pMeta = (dto.paymentMetadata || {}) as Record<string, any>;
+      const updatedBooking = await this.prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          paymentMethod: pMeta?.paymentMethod || dto.paymentProvider || 'MOBILE_BANKING',
+          senderPhone: pMeta?.senderPhone || null,
+          trxId: pMeta?.trxId || dto.providerRef || null,
+          paymentNotes: pMeta?.paymentNotes || null,
+          status: BookingStatus.HELD,
+          paymentStatus: PaymentStatus.PENDING,
+          expiresAt: new Date(Date.now() + 86400 * 1000), // Hold for 24h while Admin approves
+        } as any,
+      });
+
+      return { message: 'Payment details submitted. Pending Admin approval.', booking: updatedBooking };
     }
+
     if (booking.expiresAt && booking.expiresAt < new Date()) {
       throw new BadRequestException('Booking has expired. Please start over.');
     }
@@ -530,7 +550,7 @@ export class BookingsService {
       .toDecimalPlaces(2);
     const refundAmount = booking.netAmount.minus(chargeAmount);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const cancellation = await tx.cancellation.create({
         data: {
           bookingId,
@@ -568,6 +588,11 @@ export class BookingsService {
 
       return { cancellation, message: 'Booking cancelled successfully' };
     });
+
+    // Reverse/cancel counter agent commission if any was generated
+    await this.counterAgentService.reverseCommissionOnResell(bookingId, companyId);
+
+    return result;
   }
 
   async expireHeldBookings() {
@@ -716,6 +741,8 @@ export class BookingsService {
     if (!booking) throw new NotFoundException('Booking not found');
 
     return this.prisma.$transaction(async (tx) => {
+      await (tx as any).counterAgentCommission.deleteMany({ where: { triggerBookingId: id } });
+      await tx.discountUsage.deleteMany({ where: { bookingId: id } });
       await tx.ticket.deleteMany({ where: { bookingId: id } });
       await tx.payment.deleteMany({ where: { bookingId: id } });
       await tx.cancellation.deleteMany({ where: { bookingId: id } });
@@ -830,6 +857,57 @@ export class BookingsService {
     }
 
     return discount;
+  }
+
+  async approveUserBookingPayment(bookingId: string, companyId: string, adminId: string) {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, companyId },
+    });
+    if (!booking) throw new NotFoundException('Booking not found.');
+
+    const b = booking as any;
+    const confirmed = await this.confirmBooking(
+      bookingId,
+      companyId,
+      {
+        paymentProvider: b.paymentMethod || 'MANUAL',
+        providerRef: b.trxId || undefined,
+        paymentMetadata: { senderPhone: b.senderPhone, notes: b.paymentNotes },
+      },
+      adminId,
+      true, // isAdminApproval = true
+    );
+
+    await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        approvedAt: new Date(),
+        approvedBy: adminId,
+      } as any,
+    });
+
+    const confirmedBooking = (confirmed as any).booking ?? confirmed;
+
+    return { message: 'Booking payment approved successfully!', booking: confirmedBooking };
+  }
+
+  async rejectUserBookingPayment(bookingId: string, companyId: string, adminId: string, reason?: string) {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, companyId },
+    });
+    if (!booking) throw new NotFoundException('Booking not found.');
+
+    const cancelled = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: BookingStatus.CANCELLED,
+        paymentStatus: PaymentStatus.FAILED,
+        rejectionReason: reason || 'Payment information could not be verified by Admin.',
+        cancelledAt: new Date(),
+      } as any,
+    });
+
+    return { message: 'Booking payment rejected.', booking: cancelled };
   }
 
   private generateBookingRef(): string {

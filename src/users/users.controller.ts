@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -33,7 +34,7 @@ export class UsersController {
   }
 
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_MANAGER)
   @Post('admin/users')
   @ApiOperation({ summary: 'Create admin/staff user' })
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateUserDto) {
@@ -41,7 +42,7 @@ export class UsersController {
   }
 
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_MANAGER)
   @Get('admin/users')
   @ApiOperation({ summary: 'List users (admin)' })
   findAll(
@@ -52,7 +53,7 @@ export class UsersController {
   }
 
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_MANAGER)
   @Get('admin/users/:id')
   @ApiOperation({ summary: 'Get user (admin)' })
   findOne(
@@ -63,7 +64,7 @@ export class UsersController {
   }
 
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_MANAGER)
   @Patch('admin/users/:id')
   @ApiOperation({ summary: 'Update user (admin)' })
   update(
@@ -72,5 +73,16 @@ export class UsersController {
     @Body() dto: UpdateUserDto,
   ) {
     return this.usersService.update(id, user.companyId, dto);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.COUNTER_MANAGER)
+  @Delete('admin/users/:id')
+  @ApiOperation({ summary: 'Delete user (admin)' })
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.usersService.remove(id, user.companyId);
   }
 }

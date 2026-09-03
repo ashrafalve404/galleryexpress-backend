@@ -80,6 +80,10 @@ export class CreateBookingDto {
   source?: BookingSource;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() idempotencyKey?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() paymentMethod?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() senderPhone?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() trxId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() paymentNotes?: string;
 }
 
 export class ConfirmBookingDto {

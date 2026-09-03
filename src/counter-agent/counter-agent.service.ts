@@ -20,7 +20,14 @@ export class CounterAgentService {
   async buyBulkTickets(
     agentId: string,
     companyId: string,
-    dto: { routeId: string; quantity: number },
+    dto: {
+      routeId: string;
+      quantity: number;
+      paymentMethod?: string;
+      senderPhone?: string;
+      trxId?: string;
+      paymentNotes?: string;
+    },
   ) {
     if (dto.quantity < BULK_MIN_QUANTITY) {
       throw new BadRequestException(
@@ -67,7 +74,11 @@ export class CounterAgentService {
         commissionCap: totalAmount,
         commissionEarned: 0,
         commissionEligible: true,
-        status: 'ACTIVE',
+        status: 'PENDING_APPROVAL',
+        paymentMethod: dto.paymentMethod || 'DIRECT_CASH',
+        senderPhone: dto.senderPhone || null,
+        trxId: dto.trxId || null,
+        paymentNotes: dto.paymentNotes || null,
       } as any,
     });
 
@@ -134,14 +145,17 @@ export class CounterAgentService {
       0,
     );
 
+    // Automatically transition held commissions whose departure date has arrived
+    await this.settleDepartureCommissions(companyId);
+
     const commissions = await (this.prisma as any).counterAgentCommission.findMany({
       where: { agentId, companyId },
     });
 
-    const totalEarned = commissions.reduce(
-      (s: number, c: any) => s + Number(c.agentShare),
-      0,
-    );
+    // Only count finalized commissions (PENDING or PAID) after departure date cutoff
+    const totalEarned = commissions
+      .filter((c: any) => c.status === 'PENDING' || c.status === 'PAID')
+      .reduce((s: number, c: any) => s + Number(c.agentShare), 0);
     const commissionCap = bulkOrders
       .filter((o) => (o as any).commissionEligible)
       .reduce((s, o) => s + Number((o as any).commissionCap), 0);
@@ -184,6 +198,8 @@ export class CounterAgentService {
   // ─── MY COMMISSIONS ──────────────────────────────────────────────────────────
 
   async getMyCommissions(agentId: string, companyId: string) {
+    await this.settleDepartureCommissions(companyId);
+
     return (this.prisma as any).counterAgentCommission.findMany({
       where: { agentId, companyId },
       include: {
@@ -277,30 +293,106 @@ export class CounterAgentService {
           totalCommission: COMMISSION_PER_BOOKING,
           agentShare: sharePerAgent,
           totalAgents: n,
-          status: 'PENDING',
+          status: 'HELD_UNTIL_DEPARTURE',
         },
       });
+    }
+  }
 
-      let remaining = sharePerAgent;
-      const orders = (agentMap.get(agentId) ?? []).sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      );
+  // ─── REVERSE COMMISSION ON RESELL / CANCEL ──────────────────────────────────
 
-      for (const order of orders) {
-        if (remaining <= 0) break;
-        const cap = Number((order as any).commissionCap);
-        const earned = Number((order as any).commissionEarned);
-        const available = cap - earned;
-        const toAdd = Math.min(remaining, available);
+  async reverseCommissionOnResell(bookingId: string, companyId: string) {
+    const commissions = await (this.prisma as any).counterAgentCommission.findMany({
+      where: { triggerBookingId: bookingId, companyId },
+    });
 
-        await this.prisma.bulkTicketOrder.update({
-          where: { id: order.id },
-          data: {
-            commissionEarned: { increment: toAdd },
-            status: earned + toAdd >= cap ? 'EXHAUSTED' : 'ACTIVE',
-          } as any,
+    for (const comm of commissions) {
+      // If commission was already settled (PENDING or PAID), decrement commissionEarned on BulkTicketOrder
+      if (comm.status === 'PENDING' || comm.status === 'PAID') {
+        const activeOrders = await this.prisma.bulkTicketOrder.findMany({
+          where: { agentId: comm.agentId, companyId },
+          orderBy: { createdAt: 'desc' },
         });
-        remaining -= toAdd;
+
+        let remainingToDeduct = Number(comm.agentShare || 0);
+        for (const order of activeOrders) {
+          if (remainingToDeduct <= 0) break;
+          const currentEarned = Number((order as any).commissionEarned || 0);
+          const deduct = Math.min(remainingToDeduct, currentEarned);
+          if (deduct > 0) {
+            await this.prisma.bulkTicketOrder.update({
+              where: { id: order.id },
+              data: {
+                commissionEarned: { decrement: deduct },
+                status: 'ACTIVE',
+              } as any,
+            });
+            remainingToDeduct -= deduct;
+          }
+        }
+      }
+
+      // Mark commission record as CANCELLED
+      await (this.prisma as any).counterAgentCommission.update({
+        where: { id: comm.id },
+        data: { status: 'CANCELLED' },
+      });
+    }
+  }
+
+  // ─── SETTLE COMMISSIONS AFTER DEPARTURE DATE ────────────────────────────────
+
+  async settleDepartureCommissions(companyId: string) {
+    const heldCommissions = await (this.prisma as any).counterAgentCommission.findMany({
+      where: { companyId, status: 'HELD_UNTIL_DEPARTURE' },
+      include: {
+        triggerBooking: {
+          include: {
+            schedule: true,
+          },
+        },
+      },
+    });
+
+    const nowBstStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' });
+
+    for (const comm of heldCommissions) {
+      const schedule = comm.triggerBooking?.schedule;
+      if (!schedule) continue;
+
+      const depBstStr = new Date(schedule.departureDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' });
+
+      // If departure date has arrived or passed
+      if (nowBstStr >= depBstStr) {
+        // Transition status to PENDING (ready for Admin payout)
+        await (this.prisma as any).counterAgentCommission.update({
+          where: { id: comm.id },
+          data: { status: 'PENDING' },
+        });
+
+        // Increment commissionEarned on agent's active BulkTicketOrder
+        const eligibleOrders = await this.prisma.bulkTicketOrder.findMany({
+          where: { agentId: comm.agentId, companyId, status: 'ACTIVE' },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        let remaining = Number(comm.agentShare || 0);
+        for (const order of eligibleOrders) {
+          if (remaining <= 0) break;
+          const cap = Number((order as any).commissionCap);
+          const earned = Number((order as any).commissionEarned);
+          const available = cap - earned;
+          const toAdd = Math.min(remaining, available);
+
+          await this.prisma.bulkTicketOrder.update({
+            where: { id: order.id },
+            data: {
+              commissionEarned: { increment: toAdd },
+              status: earned + toAdd >= cap ? 'EXHAUSTED' : 'ACTIVE',
+            } as any,
+          });
+          remaining -= toAdd;
+        }
       }
     }
   }
@@ -397,6 +489,44 @@ export class CounterAgentService {
       } as any,
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async approveBulkOrder(orderId: string, companyId: string, adminId: string) {
+    const order = await this.prisma.bulkTicketOrder.findFirst({
+      where: { id: orderId, companyId },
+    });
+    if (!order) throw new NotFoundException('Bulk order not found.');
+    if (order.status !== 'PENDING_APPROVAL') {
+      throw new BadRequestException('Order is not in pending approval status.');
+    }
+
+    const updated = await this.prisma.bulkTicketOrder.update({
+      where: { id: orderId },
+      data: {
+        status: 'ACTIVE',
+        approvedAt: new Date(),
+        approvedBy: adminId,
+      } as any,
+    });
+
+    return { message: 'Bulk ticket order payment approved successfully!', order: updated };
+  }
+
+  async rejectBulkOrder(orderId: string, companyId: string, adminId: string, reason?: string) {
+    const order = await this.prisma.bulkTicketOrder.findFirst({
+      where: { id: orderId, companyId },
+    });
+    if (!order) throw new NotFoundException('Bulk order not found.');
+
+    const updated = await this.prisma.bulkTicketOrder.update({
+      where: { id: orderId },
+      data: {
+        status: 'REJECTED',
+        rejectionReason: reason || 'Payment transaction verification failed.',
+      } as any,
+    });
+
+    return { message: 'Bulk ticket order payment rejected.', order: updated };
   }
 
   async getAdminCommissions(companyId: string) {
