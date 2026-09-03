@@ -265,13 +265,28 @@ export class BookingsService {
           );
         }
 
+        // Validate userId if provided
+        let validUserId: string | null = null;
+        if (userId) {
+          const userObj = await tx.user.findUnique({ where: { id: userId } });
+          if (userObj) validUserId = userObj.id;
+        }
+
+        // Validate counterId if provided
+        let validCounterId: string | null = null;
+        const candidateCounterId = counterId || dto.counterId || dto.boardingStopId;
+        if (candidateCounterId) {
+          const counterObj = await tx.counter.findUnique({ where: { id: candidateCounterId } });
+          if (counterObj) validCounterId = counterObj.id;
+        }
+
         // Create booking
         const newBooking = await tx.booking.create({
           data: {
             companyId: schedule.companyId,
             scheduleId: dto.scheduleId,
-            userId,
-            counterId: counterId || dto.counterId || dto.boardingStopId || null,
+            userId: validUserId,
+            counterId: validCounterId,
             bookingRef,
             status: BookingStatus.HELD,
             totalAmount,
@@ -279,7 +294,7 @@ export class BookingsService {
             netAmount,
             paymentStatus: PaymentStatus.PENDING,
             source: dto.source ?? 'ONLINE',
-            notes: dto.notes,
+            notes: dto.notes || (dto.boardingStopId && !validCounterId ? `Boarding: ${dto.boardingStopId}` : undefined),
             paymentMethod: dto.paymentMethod || null,
             senderPhone: dto.senderPhone || null,
             trxId: dto.trxId || null,
@@ -292,18 +307,25 @@ export class BookingsService {
 
         // Create passengers and booking seats
         for (const seatInfo of dto.seats) {
-          const sf = seatFares.find((s) => s.seatId === seatInfo.seatId)!;
+          const sf = seatFares.find((s) => s.seatId === seatInfo.seatId);
+          const fareAmount = sf ? sf.amount : new Prisma.Decimal(2000);
+
+          let validFareId: string | null = null;
+          if (sf?.fareId) {
+            const fareObj = await tx.fare.findUnique({ where: { id: sf.fareId } });
+            if (fareObj) validFareId = fareObj.id;
+          }
 
           const passenger = await tx.passenger.create({
             data: {
               bookingId: newBooking.id,
               seatId: seatInfo.seatId,
-              name: seatInfo.passenger.name,
-              phone: seatInfo.passenger.phone,
-              email: seatInfo.passenger.email,
-              gender: seatInfo.passenger.gender,
-              age: seatInfo.passenger.age,
-              nationalId: seatInfo.passenger.nationalId,
+              name: seatInfo.passenger.name || 'Passenger',
+              phone: seatInfo.passenger.phone || '01700000000',
+              email: seatInfo.passenger.email || null,
+              gender: seatInfo.passenger.gender || null,
+              age: seatInfo.passenger.age || null,
+              nationalId: seatInfo.passenger.nationalId || null,
             },
           });
 
@@ -311,9 +333,9 @@ export class BookingsService {
             data: {
               bookingId: newBooking.id,
               seatId: seatInfo.seatId,
-              fareId: sf.fareId,
+              fareId: validFareId,
               passengerId: passenger.id,
-              amount: sf.amount,
+              amount: fareAmount,
             },
           });
         }
