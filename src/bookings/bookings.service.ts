@@ -687,6 +687,7 @@ export class BookingsService {
           bookingSeats: { include: { seat: true } },
           passengers: true,
           schedule: { include: { route: true, coach: true } },
+          counter: true,
           tickets: true,
           payments: true,
         },
