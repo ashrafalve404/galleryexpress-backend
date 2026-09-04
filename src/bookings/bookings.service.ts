@@ -177,7 +177,12 @@ export class BookingsService {
 
     // 1. Validate schedule
     const schedule = await this.prisma.schedule.findFirst({
-      where: { id: dto.scheduleId, status: 'ACTIVE' },
+      where: {
+        id: dto.scheduleId,
+        status: 'ACTIVE',
+        coach: { status: 'ACTIVE' },
+        route: { status: 'ACTIVE' },
+      },
       include: {
         coach: { include: { coachType: true } },
         route: true,
@@ -185,7 +190,7 @@ export class BookingsService {
     });
 
     if (!schedule)
-      throw new NotFoundException('Schedule not found or not active');
+      throw new NotFoundException('Schedule not found, or coach/route is not active');
 
     // 2. Check booking window
     if (schedule.bookingCloseTime && schedule.bookingCloseTime < new Date()) {
@@ -833,14 +838,15 @@ export class BookingsService {
         });
       }
 
-      // Fallback 2: determine fallback price from route destination
+      // Fallback 2: determine fallback price from route origin or destination
       let fallbackAmount = new Prisma.Decimal(900);
       if (!fare) {
         const route = await this.prisma.route.findUnique({ where: { id: routeId } });
+        const originLower = (route?.origin || '').toLowerCase();
         const destLower = (route?.destination || '').toLowerCase();
-        const price = destLower.includes('cox')
+        const price = (originLower.includes('cox') || destLower.includes('cox'))
           ? 2000
-          : destLower.includes('chittagong')
+          : (originLower.includes('chittagong') || destLower.includes('chittagong'))
           ? 1200
           : 800;
         fallbackAmount = new Prisma.Decimal(price);

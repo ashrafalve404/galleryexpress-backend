@@ -126,6 +126,12 @@ export class SchedulesService {
 
     const where: Prisma.ScheduleWhereInput = {
       status: 'ACTIVE',
+      coach: { status: 'ACTIVE' },
+      route: {
+        status: 'ACTIVE',
+        ...(originVal && { origin: { contains: originVal, mode: 'insensitive' } }),
+        ...(destVal && { destination: { contains: destVal, mode: 'insensitive' } }),
+      },
       ...(targetCompany
         ? {
             OR: [
@@ -136,18 +142,6 @@ export class SchedulesService {
         : {}),
       ...(dateRangeQuery && { departureDate: dateRangeQuery }),
       ...(dto.routeId && { routeId: dto.routeId }),
-      ...(originVal || destVal
-        ? {
-            route: {
-              ...(originVal && {
-                origin: { contains: originVal, mode: 'insensitive' },
-              }),
-              ...(destVal && {
-                destination: { contains: destVal, mode: 'insensitive' },
-              }),
-            },
-          }
-        : {}),
     };
 
     const schedules = await this.prisma.schedule.findMany({
@@ -161,6 +155,44 @@ export class SchedulesService {
       },
     });
 
+    // Fetch active fares for these routes
+    const routeIds = Array.from(new Set(schedules.map((s) => s.routeId)));
+    const fares = await this.prisma.fare.findMany({
+      where: {
+        routeId: { in: routeIds },
+        isActive: true,
+      },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+
+    let resultSchedules = schedules.map((schedule) => {
+      const coachTypeId = schedule.coach?.coachTypeId;
+      const matchingFare =
+        fares.find(
+          (f) =>
+            f.routeId === schedule.routeId &&
+            coachTypeId &&
+            f.coachTypeId === coachTypeId,
+        ) ||
+        fares.find((f) => f.routeId === schedule.routeId && !f.coachTypeId) ||
+        fares.find((f) => f.routeId === schedule.routeId);
+
+      const basePrice = matchingFare ? Number(matchingFare.baseAmount) : 0;
+
+      return {
+        ...schedule,
+        fare: matchingFare
+          ? {
+              id: matchingFare.id,
+              basePrice,
+              amount: basePrice,
+              baseAmount: basePrice,
+            }
+          : null,
+        fareAmount: basePrice,
+      };
+    });
+
     // For today: filter out buses that have already departed (compare BDT time)
     if (searchDateStr) {
       const bdNowStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Dhaka' });
@@ -172,11 +204,11 @@ export class SchedulesService {
         const currentMM = bdDate.getMinutes().toString().padStart(2, '0');
         const currentTimeStr = `${currentHH}:${currentMM}`;
         // Only return today's buses that haven't departed yet
-        return schedules.filter((s) => s.departureTime >= currentTimeStr);
+        resultSchedules = resultSchedules.filter((s) => s.departureTime >= currentTimeStr);
       }
     }
 
-    return schedules;
+    return resultSchedules;
   }
 
 
@@ -196,7 +228,34 @@ export class SchedulesService {
       },
     });
     if (!schedule) throw new NotFoundException('Schedule not found');
-    return schedule;
+
+    const coachTypeId = schedule.coach?.coachTypeId;
+    const matchingFare = await this.prisma.fare.findFirst({
+      where: {
+        routeId: schedule.routeId,
+        isActive: true,
+        OR: [
+          ...(coachTypeId ? [{ coachTypeId }] : []),
+          { coachTypeId: null },
+        ],
+      },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+
+    const basePrice = matchingFare ? Number(matchingFare.baseAmount) : 0;
+
+    return {
+      ...schedule,
+      fare: matchingFare
+        ? {
+            id: matchingFare.id,
+            basePrice,
+            amount: basePrice,
+            baseAmount: basePrice,
+          }
+        : null,
+      fareAmount: basePrice,
+    };
   }
 
   async update(id: string, companyId: string, dto: UpdateScheduleDto) {
