@@ -636,6 +636,19 @@ export class CounterAgentService {
     return { message: 'Bulk ticket order payment rejected.', order: updated };
   }
 
+  async deleteBulkOrder(orderId: string, companyId: string) {
+    const order = await this.prisma.bulkTicketOrder.findFirst({
+      where: { id: orderId, companyId },
+    });
+    if (!order) throw new NotFoundException('Bulk order not found.');
+
+    await this.prisma.bulkTicketOrder.delete({
+      where: { id: orderId },
+    });
+
+    return { message: 'Bulk ticket order deleted successfully.' };
+  }
+
   async getAdminCommissions(companyId: string) {
     return (this.prisma as any).counterAgentCommission.findMany({
       where: { companyId },

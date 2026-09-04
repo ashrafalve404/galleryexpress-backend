@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
   Param,
   UseGuards,
@@ -189,6 +190,16 @@ export class CounterAgentController {
     @Body() body: { reason?: string },
   ) {
     return this.svc.rejectBulkOrder(orderId, user.companyId, user.id, body?.reason);
+  }
+
+  @Delete('admin/bulk-orders/:id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Delete bulk ticket order' })
+  deleteBulkOrder(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') orderId: string,
+  ) {
+    return this.svc.deleteBulkOrder(orderId, user.companyId);
   }
 }
 
