@@ -232,6 +232,17 @@ export class CounterAgentService {
             amount: farePerSeat,
           },
         });
+
+        const ticketNumber = 'TKD-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+        await tx.ticket.create({
+          data: {
+            bookingId: booking.id,
+            passengerId: passenger.id,
+            ticketNumber,
+            qrToken: crypto.randomUUID(),
+            status: 'ACTIVE',
+          },
+        });
       }
 
       const finalRemainingBulk = Math.max(0, totalAvailable - seatCount);
@@ -511,7 +522,7 @@ export class CounterAgentService {
             },
           },
           passengers: true,
-          bookingSeats: true,
+          bookingSeats: { include: { seat: true } },
         },
         orderBy: { createdAt: 'desc' },
       });

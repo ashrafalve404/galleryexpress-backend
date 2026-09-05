@@ -8,8 +8,13 @@ export class TicketsService {
   async findByTicketNumber(ticketNumber: string, companyId: string) {
     const ticket = await this.prisma.ticket.findFirst({
       where: {
-        ticketNumber,
         booking: { companyId },
+        OR: [
+          { ticketNumber },
+          { id: ticketNumber },
+          { booking: { bookingRef: ticketNumber } },
+          { bookingId: ticketNumber },
+        ],
       },
       include: {
         passenger: true,
@@ -28,7 +33,44 @@ export class TicketsService {
       },
     });
 
-    if (!ticket) throw new NotFoundException('Ticket not found');
+    if (!ticket) {
+      // Fallback lookup directly on Booking using bookingRef or bookingId
+      const booking = await this.prisma.booking.findFirst({
+        where: {
+          companyId,
+          OR: [{ bookingRef: ticketNumber }, { id: ticketNumber }],
+        },
+        include: {
+          counter: true,
+          passengers: true,
+          schedule: {
+            include: {
+              coach: { include: { coachType: true } },
+              route: { include: { stops: { orderBy: { sequence: 'asc' } } } },
+            },
+          },
+          bookingSeats: { include: { seat: true } },
+        },
+      });
+
+      if (booking) {
+        const passenger = booking.passengers[0] || null;
+        return {
+          id: booking.id,
+          bookingId: booking.id,
+          passengerId: passenger?.id || null,
+          ticketNumber: booking.bookingRef,
+          qrToken: booking.id,
+          status: 'ACTIVE',
+          createdAt: booking.createdAt,
+          updatedAt: booking.updatedAt,
+          passenger,
+          booking,
+        } as any;
+      }
+
+      throw new NotFoundException('Ticket not found');
+    }
     return ticket;
   }
 
