@@ -56,6 +56,12 @@ class SubmitKycDto {
 export class CounterAgentController {
   constructor(private readonly svc: CounterAgentService) {}
 
+  @Get('schedules')
+  @ApiOperation({ summary: 'Get active bus schedules for ticket selling' })
+  getActiveSchedules(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.getActiveSchedules(user.companyId);
+  }
+
   @Post('sell-ticket')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Sell ticket to passenger from agent bulk ticket balance' })

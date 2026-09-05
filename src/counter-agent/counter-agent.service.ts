@@ -1066,5 +1066,83 @@ export class CounterAgentService {
 
     return updated;
   }
+
+  // ─── GET ACTIVE SCHEDULES FOR AGENT SELLING ───────────────────────────
+
+  async getActiveSchedules(companyId?: string) {
+    const where: any = {
+      status: 'ACTIVE',
+      route: {
+        status: 'ACTIVE',
+        OR: [
+          {
+            origin: { contains: 'Dhaka', mode: 'insensitive' },
+            destination: { contains: "Cox's Bazar", mode: 'insensitive' },
+          },
+          {
+            origin: { contains: "Cox's Bazar", mode: 'insensitive' },
+            destination: { contains: 'Dhaka', mode: 'insensitive' },
+          },
+        ],
+      },
+    };
+
+    if (companyId) {
+      where.OR = [
+        { companyId },
+        { companyId: '00000000-0000-4000-a000-000000000001' },
+      ];
+    }
+
+    const schedules = await this.prisma.schedule.findMany({
+      where,
+      orderBy: [{ departureDate: 'asc' }, { departureTime: 'asc' }],
+      include: {
+        coach: {
+          include: { coachType: true },
+        },
+        route: true,
+      },
+      take: 50,
+    });
+
+    const routeIds = Array.from(new Set(schedules.map((s) => s.routeId)));
+    const fares = await this.prisma.fare.findMany({
+      where: {
+        routeId: { in: routeIds },
+        isActive: true,
+      },
+    });
+
+    return schedules.map((schedule) => {
+      const coachTypeId = schedule.coach?.coachTypeId;
+      const matchingFare =
+        fares.find(
+          (f) =>
+            f.routeId === schedule.routeId &&
+            coachTypeId &&
+            f.coachTypeId === coachTypeId,
+        ) ||
+        fares.find((f) => f.routeId === schedule.routeId && !f.coachTypeId) ||
+        fares.find((f) => f.routeId === schedule.routeId);
+
+      const fare = matchingFare ? Number(matchingFare.baseAmount) : 2000;
+
+      return {
+        id: schedule.id,
+        departureTime: schedule.departureTime,
+        departureDate: schedule.departureDate.toISOString().split('T')[0],
+        coach: {
+          coachNumber: schedule.coach?.coachNumber || 'BUS-101',
+          coachType: (schedule.coach as any)?.coachType?.name || (schedule.coach as any)?.coachType?.category || 'AC',
+        },
+        route: {
+          origin: schedule.route?.origin || 'Dhaka',
+          destination: schedule.route?.destination || "Cox's Bazar",
+        },
+        fare,
+      };
+    });
+  }
 }
 
