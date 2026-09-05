@@ -17,7 +17,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
+import { RegisterDto, SendOtpDto } from './dto/register.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -51,6 +51,15 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, req.ip);
+  }
+
+  @Public()
+  @Post('register/send-otp')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @ApiOperation({ summary: 'Send SMS OTP for new account registration' })
+  sendRegisterOtp(@Body() dto: SendOtpDto) {
+    return this.authService.sendRegisterOtp(dto.phone);
   }
 
   @Public()

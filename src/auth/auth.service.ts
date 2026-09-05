@@ -15,6 +15,8 @@ import { RegisterDto } from './dto/register.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UserRole } from '@prisma/client';
 
+import { SmsService } from '../sms/sms.service';
+
 function getPhoneVariations(raw: string): string[] {
   const cleaned = raw.trim();
   const variations = new Set<string>([cleaned]);
@@ -41,11 +43,13 @@ function getPhoneVariations(raw: string): string[] {
 export class AuthService {
   private readonly MAX_FAILED_ATTEMPTS = 5;
   private readonly LOCK_DURATION_MINUTES = 30;
+  private otpStore = new Map<string, { otp: string; expiresAt: number }>();
 
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private smsService: SmsService,
   ) {}
 
   async login(dto: LoginDto, ipAddress?: string) {
@@ -145,7 +149,44 @@ export class AuthService {
     };
   }
 
-  async register(dto: RegisterDto, companyId?: string) {
+  async sendRegisterOtp(phone: string) {
+    const rawPhone = (phone || '').trim();
+    if (!rawPhone) {
+      throw new BadRequestException('Mobile number is required for OTP verification');
+    }
+
+    const phoneVars = getPhoneVariations(rawPhone);
+    const existingPhone = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { phone: { in: phoneVars } },
+          { email: `${rawPhone}@galleryexpress.internal` },
+        ],
+      },
+    });
+
+    if (existingPhone) {
+      throw new ConflictException('An account with this phone number already exists.');
+    }
+
+    // Generate 4-digit numeric OTP (1000-9999)
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const cleanedPhone = this.smsService.formatPhoneNumber(rawPhone);
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+
+    this.otpStore.set(cleanedPhone, { otp, expiresAt });
+
+    // Send SMS via BulkSMSBD
+    await this.smsService.sendOtp(rawPhone, otp);
+
+    return {
+      success: true,
+      message: `OTP verification code sent to ${rawPhone}`,
+      phone: rawPhone,
+    };
+  }
+
+  async register(dto: RegisterDto & { otp?: string }, companyId?: string) {
     let targetCompanyId = companyId;
     if (!targetCompanyId) {
       const company = await this.prisma.company.findFirst({ select: { id: true } });
@@ -156,6 +197,29 @@ export class AuthService {
     }
 
     const rawPhone = (dto.phone || '').trim();
+    if (rawPhone) {
+      if (!dto.otp) {
+        throw new BadRequestException('OTP verification code is required to complete registration.');
+      }
+
+      const cleanedPhone = this.smsService.formatPhoneNumber(rawPhone);
+      const cached = this.otpStore.get(cleanedPhone);
+
+      const isValid =
+        cached &&
+        cached.otp === dto.otp.trim() &&
+        cached.expiresAt > Date.now();
+
+      if (!isValid) {
+        throw new BadRequestException(
+          'Invalid or expired OTP code. Please enter the correct OTP sent to your mobile phone.',
+        );
+      }
+
+      // Clear OTP after successful verification
+      this.otpStore.delete(cleanedPhone);
+    }
+
     const email = dto.email ? dto.email.toLowerCase() : rawPhone ? `${rawPhone}@galleryexpress.internal` : `user_${Date.now()}@galleryexpress.internal`;
 
     if (rawPhone) {

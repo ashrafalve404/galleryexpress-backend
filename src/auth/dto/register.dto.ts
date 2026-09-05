@@ -26,8 +26,19 @@ export class RegisterDto {
   @IsString()
   phone?: string;
 
-  @ApiProperty({ minLength: 8 })
+  @ApiProperty({ minLength: 6 })
   @IsString()
   @MinLength(6)
   password: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  otp?: string;
+}
+
+export class SendOtpDto {
+  @ApiProperty()
+  @IsString()
+  phone: string;
 }
