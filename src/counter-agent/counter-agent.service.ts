@@ -1135,16 +1135,6 @@ export class CounterAgentService {
       departureDate: { gte: startOfToday },
       route: {
         status: 'ACTIVE',
-        OR: [
-          {
-            origin: { contains: 'Dhaka', mode: 'insensitive' },
-            destination: { contains: "Cox's Bazar", mode: 'insensitive' },
-          },
-          {
-            origin: { contains: "Cox's Bazar", mode: 'insensitive' },
-            destination: { contains: 'Dhaka', mode: 'insensitive' },
-          },
-        ],
       },
     };
 
@@ -1164,7 +1154,7 @@ export class CounterAgentService {
         },
         route: true,
       },
-      take: 50,
+      take: 500,
     });
 
     const routeIds = Array.from(new Set(schedules.map((s) => s.routeId)));
