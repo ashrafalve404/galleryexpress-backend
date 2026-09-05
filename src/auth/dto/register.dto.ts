@@ -35,6 +35,11 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   otp?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  role?: string;
 }
 
 export class SendOtpDto {

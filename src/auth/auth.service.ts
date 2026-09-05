@@ -196,8 +196,14 @@ export class AuthService {
       targetCompanyId = company.id;
     }
 
+    const userRole = dto.role === UserRole.COUNTER_AGENT || dto.role === 'COUNTER_AGENT'
+      ? UserRole.COUNTER_AGENT
+      : UserRole.CUSTOMER;
+
     const rawPhone = (dto.phone || '').trim();
-    if (rawPhone) {
+
+    // OTP verification only required for CUSTOMER accounts
+    if (userRole === UserRole.CUSTOMER && rawPhone) {
       if (!dto.otp) {
         throw new BadRequestException('OTP verification code is required to complete registration.');
       }
@@ -249,7 +255,7 @@ export class AuthService {
         passwordHash,
         firstName: dto.firstName,
         lastName: dto.lastName || '',
-        role: UserRole.CUSTOMER,
+        role: userRole,
       },
       select: {
         id: true,
