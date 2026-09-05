@@ -167,12 +167,20 @@ export class CounterAgentService {
       const farePerSeat = (schedule as any).fare ? Number((schedule as any).fare) : 2000;
       const totalAmount = farePerSeat * seatCount;
 
+      let validCounterId: string | null = null;
+      if ((agent as any)?.assignedCounterId) {
+        const counterObj = await tx.counter.findUnique({
+          where: { id: (agent as any).assignedCounterId },
+        });
+        if (counterObj) validCounterId = counterObj.id;
+      }
+
       const booking = await tx.booking.create({
         data: {
           companyId,
           scheduleId: dto.scheduleId,
           userId: agentId,
-          counterId: (agent as any).assignedCounterId ?? null,
+          counterId: validCounterId,
           bookingRef,
           status: 'CONFIRMED',
           totalAmount,
@@ -186,10 +194,29 @@ export class CounterAgentService {
       });
 
       for (const seatNo of dto.seatNumbers) {
+        let seatObj = await tx.seat.findFirst({
+          where: { coachId: schedule.coachId, seatNumber: seatNo },
+        });
+
+        if (!seatObj) {
+          const rowIdx = seatNo.charCodeAt(0) - 64;
+          const colIdx = parseInt(seatNo.substring(1), 10) || 1;
+          seatObj = await tx.seat.create({
+            data: {
+              coachId: schedule.coachId,
+              seatNumber: seatNo,
+              row: isNaN(rowIdx) ? 1 : rowIdx,
+              column: isNaN(colIdx) ? 1 : colIdx,
+              seatType: 'REGULAR',
+              status: 'AVAILABLE',
+            },
+          });
+        }
+
         const passenger = await tx.passenger.create({
           data: {
             bookingId: booking.id,
-            seatId: seatNo,
+            seatId: seatObj.id,
             name: dto.passengerName,
             phone: dto.passengerPhone,
             email: dto.passengerEmail || null,
@@ -200,7 +227,7 @@ export class CounterAgentService {
         await tx.bookingSeat.create({
           data: {
             bookingId: booking.id,
-            seatId: seatNo,
+            seatId: seatObj.id,
             passengerId: passenger.id,
             amount: farePerSeat,
           },
