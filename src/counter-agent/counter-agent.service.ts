@@ -1070,8 +1070,18 @@ export class CounterAgentService {
   // ─── GET ACTIVE SCHEDULES FOR AGENT SELLING ───────────────────────────
 
   async getActiveSchedules(companyId?: string) {
+    const bdNowStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Dhaka' });
+    const bdDate = new Date(bdNowStr);
+    const bdTodayStr = `${bdDate.getFullYear()}-${(bdDate.getMonth() + 1).toString().padStart(2, '0')}-${bdDate.getDate().toString().padStart(2, '0')}`;
+    const startOfToday = new Date(`${bdTodayStr}T00:00:00.000Z`);
+
+    const currentHH = bdDate.getHours().toString().padStart(2, '0');
+    const currentMM = bdDate.getMinutes().toString().padStart(2, '0');
+    const currentTimeStr = `${currentHH}:${currentMM}`;
+
     const where: any = {
       status: 'ACTIVE',
+      departureDate: { gte: startOfToday },
       route: {
         status: 'ACTIVE',
         OR: [
@@ -1114,35 +1124,73 @@ export class CounterAgentService {
       },
     });
 
-    return schedules.map((schedule) => {
-      const coachTypeId = schedule.coach?.coachTypeId;
-      const matchingFare =
-        fares.find(
-          (f) =>
-            f.routeId === schedule.routeId &&
-            coachTypeId &&
-            f.coachTypeId === coachTypeId,
-        ) ||
-        fares.find((f) => f.routeId === schedule.routeId && !f.coachTypeId) ||
-        fares.find((f) => f.routeId === schedule.routeId);
+    const to24Hour = (timeStr: string): string => {
+      if (!timeStr) return '00:00';
+      const str = timeStr.trim();
+      if (/^\d{1,2}:\d{2}$/.test(str)) {
+        const [h, m] = str.split(':');
+        return `${h.padStart(2, '0')}:${m}`;
+      }
+      const match = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (match) {
+        let h = parseInt(match[1], 10);
+        const m = match[2];
+        const ampm = match[3].toUpperCase();
+        if (ampm === 'PM' && h < 12) h += 12;
+        if (ampm === 'AM' && h === 12) h = 0;
+        return `${h.toString().padStart(2, '0')}:${m}`;
+      }
+      return str;
+    };
 
-      const fare = matchingFare ? Number(matchingFare.baseAmount) : 2000;
+    return schedules
+      .map((schedule) => {
+        const coachTypeId = schedule.coach?.coachTypeId;
+        const matchingFare =
+          fares.find(
+            (f) =>
+              f.routeId === schedule.routeId &&
+              coachTypeId &&
+              f.coachTypeId === coachTypeId,
+          ) ||
+          fares.find((f) => f.routeId === schedule.routeId && !f.coachTypeId) ||
+          fares.find((f) => f.routeId === schedule.routeId);
 
-      return {
-        id: schedule.id,
-        departureTime: schedule.departureTime,
-        departureDate: schedule.departureDate.toISOString().split('T')[0],
-        coach: {
-          coachNumber: schedule.coach?.coachNumber || 'BUS-101',
-          coachType: (schedule.coach as any)?.coachType?.name || (schedule.coach as any)?.coachType?.category || 'AC',
-        },
-        route: {
-          origin: schedule.route?.origin || 'Dhaka',
-          destination: schedule.route?.destination || "Cox's Bazar",
-        },
-        fare,
-      };
-    });
+        const fare = matchingFare ? Number(matchingFare.baseAmount) : 2000;
+        const dateStr = schedule.departureDate.toISOString().split('T')[0];
+
+        return {
+          id: schedule.id,
+          departureTime: schedule.departureTime,
+          departureDate: dateStr,
+          arrivalTime: schedule.arrivalTime || '03:00 PM',
+          coach: {
+            id: schedule.coach?.id,
+            name: schedule.coach?.name || 'Arabian Express Hino AC 01',
+            coachNumber: schedule.coach?.coachNumber || 'BUS-101',
+            coachType:
+              (schedule.coach as any)?.coachType?.name ||
+              (schedule.coach as any)?.coachType?.category ||
+              'AC Executive',
+          },
+          route: {
+            id: schedule.route?.id,
+            origin: schedule.route?.origin || 'Dhaka',
+            destination: schedule.route?.destination || "Cox's Bazar",
+          },
+          fare,
+        };
+      })
+      .filter((s) => {
+        // Exclude buses today that have already departed (compare BDT time)
+        if (s.departureDate === bdTodayStr) {
+          const dep24 = to24Hour(s.departureTime);
+          if (dep24 < currentTimeStr) {
+            return false;
+          }
+        }
+        return true;
+      });
   }
 }
 
