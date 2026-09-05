@@ -40,6 +40,16 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   role?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  referCode?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  referralCode?: string;
 }
 
 export class SendOtpDto {

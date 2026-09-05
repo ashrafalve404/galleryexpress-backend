@@ -247,6 +247,11 @@ export class AuthService {
 
     const passwordHash = await argon2.hash(dto.password);
 
+    // Generate unique referral code (e.g. AG-8F4A21 or REF-99A12X)
+    const refPrefix = userRole === UserRole.COUNTER_AGENT ? 'AG' : 'REF';
+    const generatedReferralCode = `${refPrefix}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const usedReferCode = (dto.referCode || dto.referralCode || '').trim().toUpperCase() || null;
+
     const user = await this.prisma.user.create({
       data: {
         companyId: targetCompanyId,
@@ -256,6 +261,8 @@ export class AuthService {
         firstName: dto.firstName,
         lastName: dto.lastName || '',
         role: userRole,
+        referralCode: generatedReferralCode,
+        referredByCode: usedReferCode,
       },
       select: {
         id: true,
@@ -265,6 +272,8 @@ export class AuthService {
         lastName: true,
         role: true,
         companyId: true,
+        referralCode: true,
+        referredByCode: true,
       },
     });
 

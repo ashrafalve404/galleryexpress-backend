@@ -118,15 +118,31 @@ export class CounterAgentService {
 
   async getDashboardStats(agentId: string, companyId: string) {
     try {
-      const agent = await this.prisma.user.findUnique({
+      let agent = await this.prisma.user.findUnique({
         where: { id: agentId },
         select: {
           id: true,
           firstName: true,
           lastName: true,
           email: true,
+          referralCode: true,
         },
       });
+
+      if (agent && !agent.referralCode) {
+        const genCode = `AG-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+        agent = await this.prisma.user.update({
+          where: { id: agentId },
+          data: { referralCode: genCode },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            referralCode: true,
+          },
+        });
+      }
 
       const agentFull = await this.prisma.user.findUnique({
         where: { id: agentId },
@@ -330,10 +346,24 @@ export class CounterAgentService {
       });
       if (!booking) return;
 
+      const targetCounterId = counterId || booking.counterId || null;
+
       // 2. Fetch all active bulk orders with remaining commission capacity
-      const eligibleOrders = await this.prisma.bulkTicketOrder.findMany({
+      const allEligibleOrders = await this.prisma.bulkTicketOrder.findMany({
         where: { status: 'ACTIVE', commissionEligible: true } as any,
+        include: { agent: { select: { id: true, assignedCounterId: true } } },
       });
+
+      // Filter to agents whose primary assigned counter matches the booking counter (if specified)
+      let eligibleOrders = allEligibleOrders;
+      if (targetCounterId) {
+        const counterMatchedOrders = allEligibleOrders.filter(
+          (order: any) => order.agent?.assignedCounterId === targetCounterId,
+        );
+        if (counterMatchedOrders.length > 0) {
+          eligibleOrders = counterMatchedOrders;
+        }
+      }
 
       const agentMap = new Map<string, typeof eligibleOrders>();
       for (const order of eligibleOrders) {

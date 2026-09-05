@@ -249,6 +249,10 @@ model User {
   kycVerifiedAt        DateTime?
   kycRejectReason      String?
 
+  // Referral System
+  referralCode         String?    @unique
+  referredByCode       String?
+
   // Counter Agent Assignment
   assignedCounterId    String?    // Counter agent's home counter
 
