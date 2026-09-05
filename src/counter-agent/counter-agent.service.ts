@@ -91,6 +91,155 @@ export class CounterAgentService {
     return bulkOrder;
   }
 
+  // ─── SELL TICKET FROM BULK BALANCE ──────────────────────────────────────────
+
+  async sellTicketFromBulk(
+    agentId: string,
+    companyId: string,
+    dto: {
+      scheduleId: string;
+      seatNumbers: string[];
+      passengerName: string;
+      passengerPhone: string;
+      passengerEmail?: string;
+      gender?: string;
+    },
+  ) {
+    const seatCount = dto.seatNumbers?.length || 0;
+    if (seatCount === 0) {
+      throw new BadRequestException('Please select at least one seat to sell.');
+    }
+
+    const agent = await this.prisma.user.findUnique({ where: { id: agentId } });
+    if (!agent) throw new NotFoundException('Agent account not found.');
+
+    if (agent.kycStatus !== 'VERIFIED') {
+      throw new BadRequestException(
+        'KYC Verification Required. Please wait for Admin KYC approval before selling tickets.',
+      );
+    }
+
+    const schedule = await this.prisma.schedule.findFirst({
+      where: { id: dto.scheduleId, companyId },
+      include: { route: true, coach: true },
+    });
+    if (!schedule) throw new NotFoundException('Schedule not found.');
+
+    // Find active bulk order for this agent with sufficient remaining balance
+    const activeBulkOrders = await this.prisma.bulkTicketOrder.findMany({
+      where: {
+        agentId,
+        routeId: schedule.routeId,
+        status: 'ACTIVE',
+        remainingQuantity: { gte: seatCount },
+      } as any,
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (activeBulkOrders.length === 0) {
+      throw new BadRequestException(
+        `Insufficient bulk ticket balance for this route. You need ${seatCount} bulk ticket(s) remaining. Please purchase more bulk tickets.`,
+      );
+    }
+
+    const bulkOrder = activeBulkOrders[0];
+
+    // Deduct bulk quantity & create confirmed booking
+    const result = await this.prisma.$transaction(async (tx) => {
+      const newRemaining = bulkOrder.remainingQuantity - seatCount;
+      await tx.bulkTicketOrder.update({
+        where: { id: bulkOrder.id },
+        data: {
+          remainingQuantity: newRemaining,
+          status: newRemaining === 0 ? 'EXHAUSTED' : 'ACTIVE',
+        } as any,
+      });
+
+      const bookingRef = 'TKD-AG-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const farePerSeat = (schedule as any).fare ? Number((schedule as any).fare) : 2000;
+      const totalAmount = farePerSeat * seatCount;
+
+      const booking = await tx.booking.create({
+        data: {
+          companyId,
+          scheduleId: dto.scheduleId,
+          userId: agentId,
+          counterId: (agent as any).assignedCounterId ?? null,
+          bookingRef,
+          status: 'CONFIRMED',
+          totalAmount,
+          discountAmount: 0,
+          netAmount: totalAmount,
+          paymentStatus: 'PAID',
+          paymentMethod: 'BULK_TICKET_DEDUCTION',
+          source: 'COUNTER',
+          notes: `Ticket sold from Bulk Package by Agent ${agent.firstName} (${agent.phone})`,
+        } as any,
+      });
+
+      for (const seatNo of dto.seatNumbers) {
+        const passenger = await tx.passenger.create({
+          data: {
+            bookingId: booking.id,
+            seatId: seatNo,
+            name: dto.passengerName,
+            phone: dto.passengerPhone,
+            email: dto.passengerEmail || null,
+            gender: dto.gender || 'OTHER',
+          },
+        });
+
+        await tx.bookingSeat.create({
+          data: {
+            bookingId: booking.id,
+            seatId: seatNo,
+            passengerId: passenger.id,
+            amount: farePerSeat,
+          },
+        });
+      }
+
+      return { booking, newRemaining };
+    });
+
+    // 2-Tier Agent Referral Commission:
+    // If agent was registered using another agent's referral code, referrer gets ৳200 PER ticket sold!
+    const referredByCode = (agent as any).referredByCode;
+    if (referredByCode) {
+      try {
+        const referrer = await this.prisma.user.findFirst({
+          where: { referralCode: referredByCode },
+        });
+
+        if (referrer) {
+          const referralCommissionAmount = 200 * seatCount;
+          await (this.prisma as any).counterAgentCommission.create({
+            data: {
+              companyId,
+              agentId: referrer.id, // Referrer receives ৳200 / ticket sold
+              triggerBookingId: result.booking.id,
+              totalCommission: referralCommissionAmount,
+              agentShare: referralCommissionAmount,
+              totalAgents: 1,
+              status: 'PENDING',
+              notes: `Referral Commission: Agent ${agent.firstName} (${agent.phone}) sold ${seatCount} ticket(s)`,
+            },
+          });
+        }
+      } catch (err) {
+        console.error('Referral commission processing error:', err);
+      }
+    }
+
+    return {
+      success: true,
+      message: `Successfully sold ${seatCount} ticket(s) from bulk balance!`,
+      bookingRef: result.booking.bookingRef,
+      bookingId: result.booking.id,
+      remainingBulkQuantity: result.newRemaining,
+    };
+  }
+
   // ─── ASSIGN COUNTER ──────────────────────────────────────────────────────────
 
   async assignCounter(agentId: string, companyId: string, counterId: string) {
@@ -111,8 +260,6 @@ export class CounterAgentService {
 
     return { message: 'Counter assigned successfully.', counterId };
   }
-
-  // ─── DASHBOARD STATS ─────────────────────────────────────────────────────────
 
   // ─── DASHBOARD STATS ─────────────────────────────────────────────────────────
 
@@ -200,6 +347,26 @@ export class CounterAgentService {
         console.error('commissions query notice:', e);
       }
 
+      // Referred stats
+      let referredCount = 0;
+      let referralEarnings = 0;
+      try {
+        if (agent?.referralCode) {
+          referredCount = await this.prisma.user.count({
+            where: { referredByCode: agent.referralCode },
+          });
+          const referralCommissions = commissions.filter((c: any) =>
+            c.notes?.includes('Referral Commission'),
+          );
+          referralEarnings = referralCommissions.reduce(
+            (sum: number, c: any) => sum + Number(c.agentShare || 0),
+            0,
+          );
+        }
+      } catch (e) {
+        console.error('referral stats notice:', e);
+      }
+
       // Only count finalized commissions (PENDING or PAID) after departure date cutoff
       const totalEarned = commissions
         .filter((c: any) => c.status === 'PENDING' || c.status === 'PAID')
@@ -218,7 +385,10 @@ export class CounterAgentService {
         counter,
         totalTicketsBought,
         totalTicketsRemaining,
+        ticketsSold: Math.max(0, totalTicketsBought - totalTicketsRemaining),
         totalInvested,
+        referredCount,
+        referralEarnings,
         commissionStats: {
           totalEarned,
           commissionCap,
@@ -287,6 +457,30 @@ export class CounterAgentService {
       });
     } catch (e) {
       console.error('getMyCommissions error:', e);
+      return [];
+    }
+  }
+
+  // ─── MY SOLD TICKETS ─────────────────────────────────────────────────────────
+
+  async getMySoldTickets(agentId: string, companyId: string) {
+    try {
+      return await this.prisma.booking.findMany({
+        where: { userId: agentId, companyId },
+        include: {
+          schedule: {
+            include: {
+              route: { select: { origin: true, destination: true } },
+              coach: { select: { coachNumber: true, coachType: true } },
+            },
+          },
+          passengers: true,
+          bookingSeats: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch (e) {
+      console.error('getMySoldTickets error:', e);
       return [];
     }
   }

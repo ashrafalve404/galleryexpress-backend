@@ -17,7 +17,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '@prisma/client';
-import { IsInt, IsString, IsUUID, Min, IsOptional } from 'class-validator';
+import { IsInt, IsString, IsUUID, Min, IsOptional, IsArray } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 class BuyBulkDto {
@@ -27,6 +27,15 @@ class BuyBulkDto {
   @ApiProperty({ required: false }) @IsOptional() @IsString() senderPhone?: string;
   @ApiProperty({ required: false }) @IsOptional() @IsString() trxId?: string;
   @ApiProperty({ required: false }) @IsOptional() @IsString() paymentNotes?: string;
+}
+
+class SellTicketDto {
+  @ApiProperty() @IsUUID() scheduleId: string;
+  @ApiProperty({ type: [String] }) @IsArray() seatNumbers: string[];
+  @ApiProperty() @IsString() passengerName: string;
+  @ApiProperty() @IsString() passengerPhone: string;
+  @ApiProperty({ required: false }) @IsOptional() @IsString() passengerEmail?: string;
+  @ApiProperty({ required: false }) @IsOptional() @IsString() gender?: string;
 }
 
 class AssignCounterDto {
@@ -46,6 +55,16 @@ class SubmitKycDto {
 @Controller('api/v1/counter-agent')
 export class CounterAgentController {
   constructor(private readonly svc: CounterAgentService) {}
+
+  @Post('sell-ticket')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Sell ticket to passenger from agent bulk ticket balance' })
+  sellTicket(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SellTicketDto,
+  ) {
+    return this.svc.sellTicketFromBulk(user.id, user.companyId, dto);
+  }
 
   @Post('kyc/submit')
   @HttpCode(HttpStatus.OK)
@@ -121,6 +140,12 @@ export class CounterAgentController {
   @ApiOperation({ summary: 'Get my bulk ticket orders' })
   bulkOrders(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.getMyBulkOrders(user.id, user.companyId);
+  }
+
+  @Get('sold-tickets')
+  @ApiOperation({ summary: 'Get list of tickets/bookings sold by this counter agent' })
+  soldTickets(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.getMySoldTickets(user.id, user.companyId);
   }
 
   @Get('commissions')
