@@ -252,30 +252,56 @@ export class AuthService {
     const generatedReferralCode = `${refPrefix}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     const usedReferCode = (dto.referCode || dto.referralCode || '').trim().toUpperCase() || null;
 
-    const user = await this.prisma.user.create({
-      data: {
-        companyId: targetCompanyId,
-        email,
-        phone: rawPhone || null,
-        passwordHash,
-        firstName: dto.firstName,
-        lastName: dto.lastName || '',
-        role: userRole,
-        referralCode: generatedReferralCode,
-        referredByCode: usedReferCode,
-      },
-      select: {
-        id: true,
-        email: true,
-        phone: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        companyId: true,
-        referralCode: true,
-        referredByCode: true,
-      },
-    });
+    let user: any = null;
+    try {
+      user = await this.prisma.user.create({
+        data: {
+          companyId: targetCompanyId,
+          email,
+          phone: rawPhone || null,
+          passwordHash,
+          firstName: dto.firstName,
+          lastName: dto.lastName || '',
+          role: userRole,
+          referralCode: generatedReferralCode,
+          referredByCode: usedReferCode,
+        },
+        select: {
+          id: true,
+          email: true,
+          phone: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          companyId: true,
+          referralCode: true,
+          referredByCode: true,
+        },
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2002') throw e; // Re-throw unique constraint errors (phone/email duplicate)
+      // Fallback if referralCode migration is pending on database
+      user = await this.prisma.user.create({
+        data: {
+          companyId: targetCompanyId,
+          email,
+          phone: rawPhone || null,
+          passwordHash,
+          firstName: dto.firstName,
+          lastName: dto.lastName || '',
+          role: userRole,
+        },
+        select: {
+          id: true,
+          email: true,
+          phone: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          companyId: true,
+        },
+      });
+    }
 
     const tokens = await this.generateTokens(
       user.id,

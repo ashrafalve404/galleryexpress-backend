@@ -118,28 +118,42 @@ export class CounterAgentService {
 
   async getDashboardStats(agentId: string, companyId: string) {
     try {
-      let agent = await this.prisma.user.findUnique({
-        where: { id: agentId },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          referralCode: true,
-        },
-      });
-
-      if (agent && !agent.referralCode) {
-        const genCode = `AG-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-        agent = await this.prisma.user.update({
+      let agent: any = null;
+      try {
+        agent = await this.prisma.user.findUnique({
           where: { id: agentId },
-          data: { referralCode: genCode },
           select: {
             id: true,
             firstName: true,
             lastName: true,
             email: true,
             referralCode: true,
+          },
+        });
+
+        if (agent && !agent.referralCode) {
+          const genCode = `AG-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+          agent = await this.prisma.user.update({
+            where: { id: agentId },
+            data: { referralCode: genCode },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              referralCode: true,
+            },
+          });
+        }
+      } catch (e) {
+        // Fallback if database migration for referralCode column is still pending
+        agent = await this.prisma.user.findUnique({
+          where: { id: agentId },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
           },
         });
       }
