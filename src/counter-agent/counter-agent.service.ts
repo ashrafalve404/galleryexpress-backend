@@ -510,15 +510,19 @@ export class CounterAgentService {
 
   // ─── MY SOLD TICKETS ─────────────────────────────────────────────────────────
 
-  async getMySoldTickets(agentId: string, companyId: string) {
+  async getMySoldTickets(agentId: string, companyId?: string) {
     try {
+      const where: any = { userId: agentId };
+      if (companyId) {
+        where.companyId = companyId;
+      }
       return await this.prisma.booking.findMany({
-        where: { userId: agentId, companyId },
+        where,
         include: {
           schedule: {
             include: {
               route: { select: { origin: true, destination: true } },
-              coach: { select: { coachNumber: true, coachType: true } },
+              coach: { select: { name: true, coachNumber: true, coachType: true } },
             },
           },
           passengers: true,
