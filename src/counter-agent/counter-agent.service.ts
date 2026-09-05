@@ -125,35 +125,43 @@ export class CounterAgentService {
     });
     if (!schedule) throw new NotFoundException('Schedule not found.');
 
-    // Find active bulk order for this agent with sufficient remaining balance
+    // Find all active bulk orders for this agent with remaining balance
     const activeBulkOrders = await this.prisma.bulkTicketOrder.findMany({
       where: {
         agentId,
-        routeId: schedule.routeId,
         status: 'ACTIVE',
-        remainingQuantity: { gte: seatCount },
+        remainingQuantity: { gt: 0 },
       } as any,
       orderBy: { createdAt: 'asc' },
     });
 
-    if (activeBulkOrders.length === 0) {
+    const totalAvailable = activeBulkOrders.reduce(
+      (s, o) => s + (o.remainingQuantity || 0),
+      0,
+    );
+
+    if (totalAvailable < seatCount) {
       throw new BadRequestException(
-        `Insufficient bulk ticket balance for this route. You need ${seatCount} bulk ticket(s) remaining. Please purchase more bulk tickets.`,
+        `Insufficient bulk ticket balance. You have ${totalAvailable} ticket(s) remaining, but selected ${seatCount} seat(s). Please purchase more bulk tickets.`,
       );
     }
 
-    const bulkOrder = activeBulkOrders[0];
-
     // Deduct bulk quantity & create confirmed booking
     const result = await this.prisma.$transaction(async (tx) => {
-      const newRemaining = bulkOrder.remainingQuantity - seatCount;
-      await tx.bulkTicketOrder.update({
-        where: { id: bulkOrder.id },
-        data: {
-          remainingQuantity: newRemaining,
-          status: newRemaining === 0 ? 'EXHAUSTED' : 'ACTIVE',
-        } as any,
-      });
+      let remainingToDeduct = seatCount;
+      for (const order of activeBulkOrders) {
+        if (remainingToDeduct <= 0) break;
+        const deduct = Math.min(order.remainingQuantity, remainingToDeduct);
+        const newRemaining = order.remainingQuantity - deduct;
+        await tx.bulkTicketOrder.update({
+          where: { id: order.id },
+          data: {
+            remainingQuantity: newRemaining,
+            status: newRemaining === 0 ? 'EXHAUSTED' : 'ACTIVE',
+          } as any,
+        });
+        remainingToDeduct -= deduct;
+      }
 
       const bookingRef = 'TKD-AG-' + Math.random().toString(36).substring(2, 8).toUpperCase();
       const farePerSeat = (schedule as any).fare ? Number((schedule as any).fare) : 2000;
@@ -199,7 +207,8 @@ export class CounterAgentService {
         });
       }
 
-      return { booking, newRemaining };
+      const finalRemainingBulk = Math.max(0, totalAvailable - seatCount);
+      return { booking, remainingBulkQuantity: finalRemainingBulk };
     });
 
     // 2-Tier Agent Referral Commission:
@@ -236,7 +245,7 @@ export class CounterAgentService {
       message: `Successfully sold ${seatCount} ticket(s) from bulk balance!`,
       bookingRef: result.booking.bookingRef,
       bookingId: result.booking.id,
-      remainingBulkQuantity: result.newRemaining,
+      remainingBulkQuantity: result.remainingBulkQuantity,
     };
   }
 

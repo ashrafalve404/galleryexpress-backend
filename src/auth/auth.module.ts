@@ -18,7 +18,7 @@ import { SmsModule } from '../sms/sms.module';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('jwt.secret'),
         signOptions: {
-          expiresIn: (configService.get<string>('jwt.accessExpires') || '15m') as never,
+          expiresIn: (configService.get<string>('jwt.accessExpires') || '7d') as never,
         },
       }),
     }),

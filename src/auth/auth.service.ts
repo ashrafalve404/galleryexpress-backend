@@ -409,12 +409,12 @@ export class AuthService {
       this.jwtService.signAsync(payload, {
         secret: this.configService.get<string>('jwt.secret'),
         expiresIn: (this.configService.get<string>('jwt.accessExpires') ||
-          '15m') as never,
+          '7d') as never,
       }),
       this.jwtService.signAsync(payload, {
         secret: this.configService.get<string>('jwt.refreshSecret'),
         expiresIn: (this.configService.get<string>('jwt.refreshExpires') ||
-          '7d') as never,
+          '90d') as never,
       }),
     ]);
 
