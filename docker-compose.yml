@@ -3,32 +3,23 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: development
+      target: production
     container_name: gallery-express-api
     restart: unless-stopped
     ports:
-      - '${PORT:-3000}:3000'
+      - "3003:3000"
+    env_file:
+      - .env
     environment:
-      - NODE_ENV=development
-      - DOCKER_CONTAINER=true
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/gallery_express?schema=public
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-refresh-secret}
-      - JWT_ACCESS_EXPIRES=${JWT_ACCESS_EXPIRES:-7d}
-      - JWT_REFRESH_EXPIRES=${JWT_REFRESH_EXPIRES:-90d}
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001}
-      - SEAT_LOCK_TTL_SECONDS=300
-    volumes:
-      - .:/app
-      - /app/node_modules
+      NODE_ENV: production
+      DOCKER_CONTAINER: "true"
+      JWT_ACCESS_EXPIRES: ${JWT_ACCESS_EXPIRES:-7d}
+      JWT_REFRESH_EXPIRES: ${JWT_REFRESH_EXPIRES:-90d}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: sh -c "npx prisma generate && npm run start:dev"
     networks:
       - gallery-express-network
 
@@ -39,13 +30,11 @@ services:
     environment:
       POSTGRES_DB: gallery_express
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-    ports:
-      - '5432:5432'
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - galleryexpress_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d gallery_express']
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gallery_express"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -57,32 +46,19 @@ services:
     container_name: gallery-express-redis
     restart: unless-stopped
     command: redis-server --appendonly yes
-    ports:
-      - '6379:6379'
     volumes:
-      - redis_data:/data
+      - galleryexpress_redis_data:/data
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - gallery-express-network
 
-  adminer:
-    image: adminer
-    container_name: gallery-express-adminer
-    restart: unless-stopped
-    ports:
-      - '8080:8080'
-    depends_on:
-      - postgres
-    networks:
-      - gallery-express-network
-
 volumes:
-  postgres_data:
-  redis_data:
+  galleryexpress_postgres_data:
+  galleryexpress_redis_data:
 
 networks:
   gallery-express-network:
