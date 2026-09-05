@@ -12,6 +12,10 @@ export class ReportsService {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
     const [
       totalBookings,
       todayBookings,
@@ -19,6 +23,8 @@ export class ReportsService {
       cancelledBookings,
       totalRevenue,
       todayRevenue,
+      monthlyRevenue,
+      totalPassengers,
       onlineBookings,
       counterBookings,
       activeSchedules,
@@ -41,6 +47,22 @@ export class ReportsService {
         },
         _sum: { netAmount: true },
       }),
+      this.prisma.booking.aggregate({
+        where: {
+          companyId,
+          status: 'CONFIRMED',
+          createdAt: { gte: startOfMonth },
+        },
+        _sum: { netAmount: true },
+      }),
+      this.prisma.passenger.count({
+        where: {
+          booking: {
+            companyId,
+            status: 'CONFIRMED',
+          },
+        },
+      }),
       this.prisma.booking.count({
         where: { companyId, source: 'ONLINE', status: 'CONFIRMED' },
       }),
@@ -59,6 +81,8 @@ export class ReportsService {
       cancelledBookings,
       totalRevenue: totalRevenue._sum.netAmount || 0,
       todayRevenue: todayRevenue._sum.netAmount || 0,
+      monthlyRevenue: monthlyRevenue._sum.netAmount || 0,
+      totalPassengers,
       onlineBookings,
       counterBookings,
       activeSchedules,
