@@ -425,7 +425,8 @@ export class CounterAgentService {
         (s, o) => s + Number((o as any).commissionEarned || 0),
         0,
       );
-      const remainingCapacity = Math.max(0, commissionCap - commissionEarnedOnOrders);
+      const totalEarnedTowardsCap = commissionEarnedOnOrders + referralEarnings;
+      const remainingCapacity = Math.max(0, commissionCap - totalEarnedTowardsCap);
 
       return {
         agent: { ...agent, assignedCounterId: (agentFull as any)?.assignedCounterId },
