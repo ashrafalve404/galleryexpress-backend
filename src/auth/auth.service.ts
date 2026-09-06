@@ -202,8 +202,8 @@ export class AuthService {
 
     const rawPhone = (dto.phone || '').trim();
 
-    // OTP verification only required for CUSTOMER accounts
-    if (userRole === UserRole.CUSTOMER && rawPhone) {
+    // OTP verification required for CUSTOMER and COUNTER_AGENT accounts when phone is provided
+    if ((userRole === UserRole.CUSTOMER || userRole === UserRole.COUNTER_AGENT) && rawPhone) {
       if (!dto.otp) {
         throw new BadRequestException('OTP verification code is required to complete registration.');
       }
