@@ -321,6 +321,7 @@ export class CounterAgentService {
             firstName: true,
             lastName: true,
             email: true,
+            phone: true,
             referralCode: true,
           },
         });
@@ -335,6 +336,7 @@ export class CounterAgentService {
               firstName: true,
               lastName: true,
               email: true,
+              phone: true,
               referralCode: true,
             },
           });
@@ -348,6 +350,7 @@ export class CounterAgentService {
             firstName: true,
             lastName: true,
             email: true,
+            phone: true,
           },
         });
       }
