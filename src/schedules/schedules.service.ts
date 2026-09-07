@@ -157,12 +157,58 @@ export class SchedulesService {
 
     // Fetch active fares for these routes
     const routeIds = Array.from(new Set(schedules.map((s) => s.routeId)));
-    const fares = await this.prisma.fare.findMany({
-      where: {
-        routeId: { in: routeIds },
-        isActive: true,
-      },
-      orderBy: { effectiveFrom: 'desc' },
+    const scheduleIds = schedules.map((s) => s.id);
+
+    // Fetch active booked & locked seats for all retrieved schedules
+    const [activeBookingSeats, activeSeatLocks, fares] = await Promise.all([
+      this.prisma.bookingSeat.findMany({
+        where: {
+          booking: {
+            scheduleId: { in: scheduleIds },
+            status: { in: ['HELD', 'CONFIRMED', 'PENDING'] },
+          },
+        },
+        select: {
+          seatId: true,
+          booking: { select: { scheduleId: true } },
+        },
+      }),
+      this.prisma.seatLock.findMany({
+        where: {
+          scheduleId: { in: scheduleIds },
+          expiresAt: { gt: new Date() },
+        },
+        select: { scheduleId: true, seatId: true },
+      }),
+      this.prisma.fare.findMany({
+        where: {
+          routeId: { in: routeIds },
+          isActive: true,
+        },
+        orderBy: { effectiveFrom: 'desc' },
+      }),
+    ]);
+
+    const bookedSeatsBySchedule = new Map<string, Set<string>>();
+
+    activeBookingSeats.forEach((bs) => {
+      const schedId = bs.booking?.scheduleId;
+      if (schedId) {
+        if (!bookedSeatsBySchedule.has(schedId)) {
+          bookedSeatsBySchedule.set(schedId, new Set());
+        }
+        bookedSeatsBySchedule.get(schedId)!.add(bs.seatId);
+      }
+    });
+
+    activeSeatLocks.forEach((lock) => {
+      const schedId = lock.scheduleId;
+      if (schedId) {
+        if (!bookedSeatsBySchedule.has(schedId)) {
+          bookedSeatsBySchedule.set(schedId, new Set());
+        }
+        bookedSeatsBySchedule.get(schedId)!.add(lock.seatId);
+      }
     });
 
     let resultSchedules = schedules.map((schedule) => {
@@ -178,9 +224,16 @@ export class SchedulesService {
         fares.find((f) => f.routeId === schedule.routeId);
 
       const basePrice = matchingFare ? Number(matchingFare.baseAmount) : 0;
+      const totalCoachSeats = schedule.coach?.totalSeats || (schedule.coach as any)?._count?.seats || 30;
+      const bookedCount = bookedSeatsBySchedule.get(schedule.id)?.size || 0;
+      const availableSeats = Math.max(0, totalCoachSeats - bookedCount);
 
       return {
         ...schedule,
+        totalSeats: totalCoachSeats,
+        bookedSeatsCount: bookedCount,
+        availableSeats,
+        availableSeatsCount: availableSeats,
         fare: matchingFare
           ? {
               id: matchingFare.id,
@@ -229,6 +282,34 @@ export class SchedulesService {
     });
     if (!schedule) throw new NotFoundException('Schedule not found');
 
+    const [activeBookingSeats, activeSeatLocks] = await Promise.all([
+      this.prisma.bookingSeat.findMany({
+        where: {
+          booking: {
+            scheduleId: id,
+            status: { in: ['HELD', 'CONFIRMED', 'PENDING'] },
+          },
+        },
+        select: { seatId: true },
+      }),
+      this.prisma.seatLock.findMany({
+        where: {
+          scheduleId: id,
+          expiresAt: { gt: new Date() },
+        },
+        select: { seatId: true },
+      }),
+    ]);
+
+    const bookedSeatIds = new Set([
+      ...activeBookingSeats.map((b) => b.seatId),
+      ...activeSeatLocks.map((l) => l.seatId),
+    ]);
+
+    const totalCoachSeats = schedule.coach?.totalSeats || schedule.coach?.seats?.length || 30;
+    const bookedCount = bookedSeatIds.size;
+    const availableSeats = Math.max(0, totalCoachSeats - bookedCount);
+
     const coachTypeId = schedule.coach?.coachTypeId;
     const matchingFare = await this.prisma.fare.findFirst({
       where: {
@@ -246,6 +327,10 @@ export class SchedulesService {
 
     return {
       ...schedule,
+      totalSeats: totalCoachSeats,
+      bookedSeatsCount: bookedCount,
+      availableSeats,
+      availableSeatsCount: availableSeats,
       fare: matchingFare
         ? {
             id: matchingFare.id,
@@ -332,10 +417,22 @@ export class SchedulesService {
         where: {
           booking: {
             scheduleId,
-            status: { in: ['HELD', 'CONFIRMED'] },
+            status: { in: ['HELD', 'CONFIRMED', 'PENDING'] },
           },
         },
-        select: { seatId: true },
+        select: {
+          seatId: true,
+          passenger: {
+            select: { gender: true },
+          },
+          booking: {
+            select: {
+              passengers: {
+                select: { seatId: true, gender: true },
+              },
+            },
+          },
+        },
       }),
       this.prisma.seatLock.findMany({
         where: {
@@ -346,17 +443,33 @@ export class SchedulesService {
       }),
     ]);
 
-    const bookedSeatIds = new Set(bookedSeats.map((s) => s.seatId));
+    const bookedSeatGenderMap = new Map<string, string>();
+    const bookedSeatIds = new Set<string>();
+
+    bookedSeats.forEach((bs) => {
+      bookedSeatIds.add(bs.seatId);
+      let gender = bs.passenger?.gender;
+      if (!gender && bs.booking?.passengers?.length) {
+        const match = bs.booking.passengers.find((p) => p.seatId === bs.seatId);
+        gender = match?.gender || bs.booking.passengers[0]?.gender;
+      }
+      if (gender) {
+        bookedSeatGenderMap.set(bs.seatId, gender.toUpperCase());
+      }
+    });
+
     const lockedSeatIds = new Set(lockedSeats.map((s) => s.seatId));
 
     return schedule.coach.seats.map((seat) => {
       const isBooked = bookedSeatIds.has(seat.id);
       const isHeld = lockedSeatIds.has(seat.id);
+      const bookedGender = isBooked ? (bookedSeatGenderMap.get(seat.id) || null) : null;
       return {
         ...seat,
         availability: isBooked ? 'BOOKED' : isHeld ? 'LOCKED' : 'AVAILABLE',
         isBooked,
         isHeld,
+        bookedGender,
       };
     });
   }

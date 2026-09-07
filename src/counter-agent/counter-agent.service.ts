@@ -1159,11 +1159,56 @@ export class CounterAgentService {
     });
 
     const routeIds = Array.from(new Set(schedules.map((s) => s.routeId)));
-    const fares = await this.prisma.fare.findMany({
-      where: {
-        routeId: { in: routeIds },
-        isActive: true,
-      },
+    const scheduleIds = schedules.map((s) => s.id);
+
+    const [activeBookingSeats, activeSeatLocks, fares] = await Promise.all([
+      this.prisma.bookingSeat.findMany({
+        where: {
+          booking: {
+            scheduleId: { in: scheduleIds },
+            status: { in: ['HELD', 'CONFIRMED', 'PENDING'] },
+          },
+        },
+        select: {
+          seatId: true,
+          booking: { select: { scheduleId: true } },
+        },
+      }),
+      this.prisma.seatLock.findMany({
+        where: {
+          scheduleId: { in: scheduleIds },
+          expiresAt: { gt: new Date() },
+        },
+        select: { scheduleId: true, seatId: true },
+      }),
+      this.prisma.fare.findMany({
+        where: {
+          routeId: { in: routeIds },
+          isActive: true,
+        },
+      }),
+    ]);
+
+    const bookedSeatsBySchedule = new Map<string, Set<string>>();
+
+    activeBookingSeats.forEach((bs) => {
+      const schedId = bs.booking?.scheduleId;
+      if (schedId) {
+        if (!bookedSeatsBySchedule.has(schedId)) {
+          bookedSeatsBySchedule.set(schedId, new Set());
+        }
+        bookedSeatsBySchedule.get(schedId)!.add(bs.seatId);
+      }
+    });
+
+    activeSeatLocks.forEach((lock) => {
+      const schedId = lock.scheduleId;
+      if (schedId) {
+        if (!bookedSeatsBySchedule.has(schedId)) {
+          bookedSeatsBySchedule.set(schedId, new Set());
+        }
+        bookedSeatsBySchedule.get(schedId)!.add(lock.seatId);
+      }
     });
 
     const to24Hour = (timeStr: string): string => {
@@ -1201,11 +1246,19 @@ export class CounterAgentService {
         const fare = matchingFare ? Number(matchingFare.baseAmount) : 2000;
         const dateStr = schedule.departureDate.toISOString().split('T')[0];
 
+        const totalCoachSeats = schedule.coach?.totalSeats || 30;
+        const bookedCount = bookedSeatsBySchedule.get(schedule.id)?.size || 0;
+        const availableSeatsCount = Math.max(0, totalCoachSeats - bookedCount);
+
         return {
           id: schedule.id,
           departureTime: schedule.departureTime,
           departureDate: dateStr,
           arrivalTime: schedule.arrivalTime || '03:00 PM',
+          totalSeats: totalCoachSeats,
+          bookedSeatsCount: bookedCount,
+          availableSeatsCount,
+          availableSeats: availableSeatsCount,
           coach: {
             id: schedule.coach?.id,
             name: schedule.coach?.name || 'Arabian Express Hino AC 01',
