@@ -576,7 +576,7 @@ export class CounterAgentService {
       const routes = await this.prisma.route.findMany({
         select: { id: true, origin: true, destination: true },
       });
-      return routes.filter((r) => {
+      const filtered = routes.filter((r) => {
         const origin = (r as any).origin?.trim();
         const destination = (r as any).destination?.trim();
         return (
@@ -584,6 +584,14 @@ export class CounterAgentService {
           ALLOWED_ROUTE_NAMES.includes(destination) &&
           origin !== destination
         );
+      });
+
+      return filtered.sort((a, b) => {
+        const aDhaka = (a.origin || '').toLowerCase().includes('dhaka');
+        const bDhaka = (b.origin || '').toLowerCase().includes('dhaka');
+        if (aDhaka && !bDhaka) return -1;
+        if (!aDhaka && bDhaka) return 1;
+        return 0;
       });
     } catch (e) {
       console.error('getAllowedRoutes error:', e);
