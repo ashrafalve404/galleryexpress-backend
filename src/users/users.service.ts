@@ -21,15 +21,16 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateUserDto {
-  @ApiProperty() @IsEmail() email: string;
+  @ApiPropertyOptional() @IsOptional() @IsEmail() email?: string;
   @ApiProperty() @IsString() firstName: string;
-  @ApiProperty() @IsString() lastName: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() lastName?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() phone?: string;
   @ApiProperty() @IsString() @MinLength(8) password: string;
   @ApiPropertyOptional({ enum: UserRole })
   @IsOptional()
   @IsEnum(UserRole)
   role?: UserRole;
+  @ApiPropertyOptional() @IsOptional() @IsString() referredByCode?: string;
 }
 
 export class UpdateUserDto {
@@ -51,21 +52,46 @@ export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   async create(companyId: string, dto: CreateUserDto) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    const rawEmail = dto.email && dto.email.trim() ? dto.email.trim().toLowerCase() : null;
+    const cleanPhone = dto.phone ? dto.phone.trim() : null;
+
+    const email =
+      rawEmail ||
+      (cleanPhone
+        ? `${cleanPhone.replace(/\D/g, '')}@ticketdorkar.xyz`
+        : `user-${Date.now()}@ticketdorkar.xyz`);
+
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email },
+          ...(cleanPhone ? [{ phone: cleanPhone }] : []),
+        ],
+      },
     });
-    if (existing) throw new ConflictException('Email already in use');
+    if (existing) {
+      if (existing.email === email) throw new ConflictException('Email is already in use by another account');
+      if (cleanPhone && existing.phone === cleanPhone) throw new ConflictException('Phone number is already registered');
+    }
 
     const passwordHash = await argon2.hash(dto.password);
+    const role = dto.role ?? UserRole.STAFF;
+    const referralCode =
+      role === UserRole.COUNTER_AGENT
+        ? `AG-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+        : undefined;
+
     return this.prisma.user.create({
       data: {
         companyId,
-        email: dto.email.toLowerCase(),
-        phone: dto.phone,
+        email,
+        phone: cleanPhone || undefined,
         firstName: dto.firstName,
-        lastName: dto.lastName,
+        lastName: dto.lastName || '',
         passwordHash,
-        role: dto.role ?? UserRole.STAFF,
+        role,
+        referralCode,
+        referredByCode: dto.referredByCode ? dto.referredByCode.trim().toUpperCase() : undefined,
       },
       select: {
         id: true,
