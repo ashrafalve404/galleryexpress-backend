@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Delete,
   Body,
   Param,
@@ -48,6 +49,13 @@ class SubmitKycDto {
   @ApiProperty() @IsString() nidBackDocUrl: string;
 }
 
+class UpdateAgentProfileDto {
+  @ApiProperty({ required: false }) @IsOptional() @IsString() name?: string;
+  @ApiProperty({ required: false }) @IsOptional() @IsString() email?: string;
+  @ApiProperty({ required: false }) @IsOptional() @IsString() currentPassword?: string;
+  @ApiProperty({ required: false }) @IsOptional() @IsString() newPassword?: string;
+}
+
 @ApiTags('Counter Agent Portal')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -55,6 +63,16 @@ class SubmitKycDto {
 @Controller('api/v1/counter-agent')
 export class CounterAgentController {
   constructor(private readonly svc: CounterAgentService) {}
+
+  @Patch('profile')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update counter agent profile (Name, Email, Password)' })
+  updateProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateAgentProfileDto,
+  ) {
+    return this.svc.updateProfile(user.id, dto);
+  }
 
   @Get('schedules')
   @ApiOperation({ summary: 'Get active bus schedules for ticket selling' })
@@ -158,6 +176,12 @@ export class CounterAgentController {
   @ApiOperation({ summary: 'Get my commission history' })
   commissions(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.getMyCommissions(user.id, user.companyId);
+  }
+
+  @Get('referred-agents')
+  @ApiOperation({ summary: 'Get list of partner agents referred by current agent' })
+  getReferredAgents(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.getReferredAgents(user.id);
   }
 
   @Get('counters')

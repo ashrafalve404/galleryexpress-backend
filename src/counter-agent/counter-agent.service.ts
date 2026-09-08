@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '@prisma/client';
+import * as argon2 from 'argon2';
 
 const COMMISSION_PER_BOOKING = 200;
 const BULK_MIN_QUANTITY = 10;
@@ -400,11 +401,36 @@ export class CounterAgentService {
       // Referred stats
       let referredCount = 0;
       let referralEarnings = 0;
+      let referredAgents: any[] = [];
       try {
         if (agent?.referralCode) {
-          referredCount = await this.prisma.user.count({
+          const list = await this.prisma.user.findMany({
             where: { referredByCode: agent.referralCode },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+              createdAt: true,
+              status: true,
+            },
+            orderBy: { createdAt: 'desc' },
           });
+
+          referredAgents = list.map((u) => ({
+            id: u.id,
+            name: `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Partner Agent',
+            firstName: u.firstName,
+            lastName: u.lastName,
+            email: u.email,
+            phone: u.phone || 'N/A',
+            createdAt: u.createdAt,
+            status: u.status,
+          }));
+
+          referredCount = list.length;
+
           const referralCommissions = commissions.filter((c: any) =>
             c.notes?.includes('Referral Commission'),
           );
@@ -440,6 +466,7 @@ export class CounterAgentService {
         totalInvested,
         referredCount,
         referralEarnings,
+        referredAgents,
         commissionStats: {
           totalEarned,
           commissionCap,
@@ -1298,5 +1325,87 @@ export class CounterAgentService {
         return true;
       });
   }
+
+  // ─── UPDATE AGENT PROFILE ──────────────────────────────────────────────────
+
+  async updateProfile(
+    agentId: string,
+    dto: {
+      name?: string;
+      email?: string;
+      currentPassword?: string;
+      newPassword?: string;
+    },
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: agentId } });
+    if (!user) throw new NotFoundException('Agent account not found');
+
+    const updateData: any = {};
+
+    if (dto.name && dto.name.trim()) {
+      const parts = dto.name.trim().split(' ');
+      updateData.firstName = parts[0];
+      updateData.lastName = parts.slice(1).join(' ') || '';
+    }
+
+    if (
+      dto.email &&
+      dto.email.trim() &&
+      dto.email.trim().toLowerCase() !== user.email?.toLowerCase()
+    ) {
+      const cleanEmail = dto.email.trim().toLowerCase();
+      const existing = await this.prisma.user.findFirst({
+        where: { email: cleanEmail, id: { not: agentId } },
+      });
+      if (existing) {
+        throw new BadRequestException('This email address is already in use by another account.');
+      }
+      updateData.email = cleanEmail;
+    }
+
+    if (dto.newPassword && dto.newPassword.trim()) {
+      if (dto.currentPassword) {
+        const isValid = await argon2.verify(user.passwordHash, dto.currentPassword);
+        if (!isValid) {
+          throw new BadRequestException('Current password is incorrect');
+        }
+      }
+      if (dto.newPassword.trim().length < 6) {
+        throw new BadRequestException('New password must be at least 6 characters');
+      }
+      updateData.passwordHash = await argon2.hash(dto.newPassword.trim());
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: agentId },
+      data: updateData,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        role: true,
+      },
+    });
+
+    return {
+      message: 'Profile updated successfully',
+      user: {
+        id: updated.id,
+        name: `${updated.firstName} ${updated.lastName}`.trim(),
+        email: updated.email,
+        phone: updated.phone,
+        role: updated.role,
+      },
+    };
+  }
+
+  async getReferredAgents(agentId: string) {
+    const stats = await this.getDashboardStats(agentId, '');
+    return stats.referredAgents || [];
+  }
 }
+
+
 
