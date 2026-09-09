@@ -431,6 +431,9 @@ async function main() {
       const arrM = arrivalTotalMins % 60;
       const arrTime = `${arrH.toString().padStart(2, '0')}:${arrM.toString().padStart(2, '0')}`;
 
+      const scheduleId = `00000000-0000-4000-a000-${scheduleCounter.toString().padStart(12, '0')}`;
+      scheduleCounter++;
+
       const existingSchedule = await prisma.schedule.findFirst({
         where: {
           companyId: company.id,
@@ -442,9 +445,14 @@ async function main() {
       });
 
       if (!existingSchedule) {
-        const scheduleId = `00000000-0000-4000-a000-${scheduleCounter.toString().padStart(12, '0')}`;
-        await prisma.schedule.create({
-          data: {
+        await prisma.schedule.upsert({
+          where: { id: scheduleId },
+          update: {
+            departureDate: targetDate,
+            departureTime: s.depTime,
+            arrivalTime: arrTime,
+          },
+          create: {
             id: scheduleId,
             companyId: company.id,
             coachId: coach.id,
