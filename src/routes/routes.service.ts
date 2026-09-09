@@ -143,17 +143,23 @@ export class RoutesService {
   }
 
   // Public API: search routes
-  async searchRoutes(companyId: string, origin?: string, destination?: string) {
+  async searchRoutes(companyId?: string, origin?: string, destination?: string) {
     return this.prisma.route.findMany({
       where: {
-        companyId,
+        ...(companyId && { companyId }),
         status: 'ACTIVE',
         ...(origin && { origin: { contains: origin, mode: 'insensitive' } }),
         ...(destination && {
           destination: { contains: destination, mode: 'insensitive' },
         }),
       },
-      include: { stops: { orderBy: { sequence: 'asc' } } },
+      include: {
+        stops: { orderBy: { sequence: 'asc' } },
+        fares: {
+          where: { isActive: true },
+          select: { id: true, baseAmount: true, coachTypeId: true, coachType: { select: { id: true, name: true } } },
+        },
+      },
     });
   }
 }

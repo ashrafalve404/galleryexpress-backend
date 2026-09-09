@@ -1174,6 +1174,8 @@ export class CounterAgentService {
       departureDate: { gte: startOfToday },
       route: {
         status: 'ACTIVE',
+        origin: { in: ALLOWED_ROUTE_NAMES },
+        destination: { in: ALLOWED_ROUTE_NAMES },
       },
     };
 
