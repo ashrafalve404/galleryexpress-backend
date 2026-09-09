@@ -8,7 +8,7 @@ import { UserRole } from '@prisma/client';
 import * as argon2 from 'argon2';
 
 const COMMISSION_PER_BOOKING = 200;
-const BULK_MIN_QUANTITY = 10;
+const BULK_MIN_QUANTITY = 2;
 const ALLOWED_ROUTE_NAMES = ['Dhaka', "Cox's Bazar"];
 const UNIT_PRICE = 2000;
 

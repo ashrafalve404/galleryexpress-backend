@@ -494,9 +494,16 @@ async function main() {
     { id: '00000000-0000-4000-a000-000000000097', name: 'Dhaka - Chittagong Road',      location: 'Chittagong Road, Demra, Dhaka',                        phone: '01826-110036' },
     { id: '00000000-0000-4000-a000-000000000098', name: 'Dhaka - Kanchpur',             location: 'Kanchpur Bridge, Narayanganj–Dhaka Highway',           phone: '01826-110036' },
     { id: '00000000-0000-4000-a000-000000000099', name: 'Dhaka - Madanpur',             location: 'Madanpur Bus Stop, Narayanganj, Dhaka Highway',        phone: '01826-110036' },
-    // ── Chittagong & Cox's Bazar drop-off ──
+    // ── Chittagong & Cox's Bazar drop-off / boarding counters ──
     { id: '00000000-0000-4000-a000-000000000100', name: "Chittagong - Dampara",         location: 'Dampara Bus Terminal, Station Road, Chittagong-4000',  phone: '01826-110038' },
-    { id: '00000000-0000-4000-a000-000000000101', name: "Cox's Bazar - Kolatoli",       location: "Kolatoli Road, Near Sea Beach, Cox's Bazar-4700",      phone: '01826-110039' },
+    { id: '00000000-0000-4000-a000-000000000101', name: "Chittagong - AK Khan",         location: 'AK Khan Bus Stop, Pahartali, Chittagong',              phone: '01826-110038' },
+    { id: '00000000-0000-4000-a000-000000000102', name: "Cox's Bazar - Kolatoli",       location: "Kolatoli Road, Near Sea Beach, Cox's Bazar-4700",      phone: '01826-110039' },
+    { id: '00000000-0000-4000-a000-000000000103', name: "Cox's Bazar - Dolphin More",    location: "Dolphin Circle, Kolatoli, Cox's Bazar",                phone: '01826-110039' },
+    { id: '00000000-0000-4000-a000-000000000104', name: "Cox's Bazar - Sugandha",        location: "Sugandha Point, Sea Beach Road, Cox's Bazar",          phone: '01826-110039' },
+    { id: '00000000-0000-4000-a000-000000000105', name: "Cox's Bazar - Bus Terminal",    location: "Central Bus Terminal, Larpara, Cox's Bazar",           phone: '01826-110039' },
+    { id: '00000000-0000-4000-a000-000000000106', name: "Cox's Bazar - Ramu",            location: "Ramu Bypass, Cox's Bazar Highway",                     phone: '01826-110039' },
+    { id: '00000000-0000-4000-a000-000000000107', name: "Cox's Bazar - Eidgah",          location: "Eidgah Bus Stop, Cox's Bazar Highway",                 phone: '01826-110039' },
+    { id: '00000000-0000-4000-a000-000000000108', name: "Cox's Bazar - Chakaria",        location: "Chakaria Bus Terminal, Cox's Bazar Highway",           phone: '01826-110039' },
   ];
 
   for (const c of countersData) {

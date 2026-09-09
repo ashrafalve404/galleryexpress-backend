@@ -87,6 +87,39 @@ export class CoachesController {
     return this.coachesService.findAllCoachTypes(user.companyId);
   }
 
+  // Seat Layouts sub-routes (must come before :id route)
+  @Post('layouts')
+  @ApiOperation({ summary: 'Create seat layout' })
+  createSeatLayout(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateSeatLayoutDto,
+  ) {
+    return this.coachesService.createSeatLayout(
+      user.companyId,
+      dto.name,
+      dto.rows,
+      dto.columns,
+      dto.layoutConfig,
+      dto.description,
+    );
+  }
+
+  @Get('layouts')
+  @ApiOperation({ summary: 'List seat layouts' })
+  findAllSeatLayouts(@CurrentUser() user: AuthenticatedUser) {
+    return this.coachesService.findAllSeatLayouts(user.companyId);
+  }
+
+  @Delete('layouts/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete seat layout' })
+  deleteSeatLayout(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.coachesService.deleteSeatLayout(id, user.companyId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get coach details with seats' })
   findOne(
@@ -128,28 +161,5 @@ export class CoachesController {
       seatLayoutId,
       user.companyId,
     );
-  }
-
-  // Seat Layouts sub-routes
-  @Post('layouts')
-  @ApiOperation({ summary: 'Create seat layout' })
-  createSeatLayout(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateSeatLayoutDto,
-  ) {
-    return this.coachesService.createSeatLayout(
-      user.companyId,
-      dto.name,
-      dto.rows,
-      dto.columns,
-      dto.layoutConfig,
-      dto.description,
-    );
-  }
-
-  @Get('layouts')
-  @ApiOperation({ summary: 'List seat layouts' })
-  findAllSeatLayouts(@CurrentUser() user: AuthenticatedUser) {
-    return this.coachesService.findAllSeatLayouts(user.companyId);
   }
 }

@@ -259,6 +259,15 @@ export class CoachesService {
     return this.prisma.seatLayout.findMany({ where: { companyId } });
   }
 
+  async deleteSeatLayout(id: string, companyId: string) {
+    const layout = await this.prisma.seatLayout.findFirst({
+      where: { id, companyId },
+    });
+    if (!layout) throw new NotFoundException('Seat layout not found');
+    await this.prisma.seatLayout.delete({ where: { id } });
+    return { message: 'Seat layout deleted successfully' };
+  }
+
   async generateSeatsForCoach(
     coachId: string,
     seatLayoutId: string,
