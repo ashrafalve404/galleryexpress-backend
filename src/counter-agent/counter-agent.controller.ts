@@ -23,7 +23,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 class BuyBulkDto {
   @ApiProperty() @IsUUID() routeId: string;
-  @ApiProperty({ minimum: 10 }) @IsInt() @Min(10) quantity: number;
+  @ApiProperty({ minimum: 2 }) @IsInt() @Min(2) quantity: number;
   @ApiProperty({ required: false }) @IsOptional() @IsString() paymentMethod?: string;
   @ApiProperty({ required: false }) @IsOptional() @IsString() senderPhone?: string;
   @ApiProperty({ required: false }) @IsOptional() @IsString() trxId?: string;
@@ -136,7 +136,7 @@ export class CounterAgentController {
 
   @Post('buy-bulk')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Buy bulk tickets (min 10, Dhaka ↔ Cox\'s Bazar only)' })
+  @ApiOperation({ summary: 'Buy bulk tickets (min 2, Dhaka ↔ Cox\'s Bazar only)' })
   buyBulk(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: BuyBulkDto,
