@@ -135,7 +135,7 @@ async function main() {
   });
   console.log('✅ Coach types created');
 
-  // 4. Seat Layout (1+2 Double Deck, 30 seats total: L1..L15, U1..U15)
+  // 4. Seat Layouts (Double Deck Sleeper, 40-Seat 2+2 Chair, 30-Seat 2+1 Business VIP)
   const layoutDoubleDeck1x2Config = [
     // Lower Deck (15 Seats: L1..L15)
     { label: 'L1', row: 1, column: 1, deck: 'LOWER' },
@@ -180,10 +180,37 @@ async function main() {
     { label: 'U15', row: 5, column: 3, deck: 'UPPER' },
   ];
 
+  // 40-Seat 2+2 Standard Chair (A1..J4)
+  const rowLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+  const layout40ChairConfig: Array<{ label: string; row: number; column: number; deck: string }> = [];
+  rowLetters.forEach((letter, rIdx) => {
+    [1, 2, 3, 4].forEach((col) => {
+      layout40ChairConfig.push({
+        label: `${letter}${col}`,
+        row: rIdx + 1,
+        column: col,
+        deck: 'SINGLE',
+      });
+    });
+  });
+
+  // 30-Seat 2+1 Business VIP (A1..J3)
+  const layout30VipConfig: Array<{ label: string; row: number; column: number; deck: string }> = [];
+  rowLetters.forEach((letter, rIdx) => {
+    [1, 2, 3].forEach((col) => {
+      layout30VipConfig.push({
+        label: `${letter}${col}`,
+        row: rIdx + 1,
+        column: col,
+        deck: 'SINGLE',
+      });
+    });
+  });
+
   const seatLayout = await prisma.seatLayout.upsert({
     where: { id: '00000000-0000-4000-a000-000000000010' },
     update: {
-      name: '1+2 Double Deck (30 seats)',
+      name: '30-Bed Double Deck Sleeper',
       rows: 5,
       columns: 3,
       layoutConfig: layoutDoubleDeck1x2Config,
@@ -191,11 +218,49 @@ async function main() {
     create: {
       id: '00000000-0000-4000-a000-000000000010',
       companyId: company.id,
-      name: '1+2 Double Deck (30 seats)',
+      name: '30-Bed Double Deck Sleeper',
       rows: 5,
       columns: 3,
       layoutConfig: layoutDoubleDeck1x2Config,
       description: 'Double deck 1+2 seating arrangement (15 Lower, 15 Upper)',
+    },
+  });
+
+  await prisma.seatLayout.upsert({
+    where: { id: '00000000-0000-4000-a000-000000000020' },
+    update: {
+      name: '40-Seat 2+2 Standard Chair',
+      rows: 10,
+      columns: 4,
+      layoutConfig: layout40ChairConfig,
+    },
+    create: {
+      id: '00000000-0000-4000-a000-000000000020',
+      companyId: company.id,
+      name: '40-Seat 2+2 Standard Chair',
+      rows: 10,
+      columns: 4,
+      layoutConfig: layout40ChairConfig,
+      description: 'Standard 40 seat 2+2 chair layout (A1-J4)',
+    },
+  });
+
+  await prisma.seatLayout.upsert({
+    where: { id: '00000000-0000-4000-a000-000000000030' },
+    update: {
+      name: '30-Seat 2+1 Business VIP',
+      rows: 10,
+      columns: 3,
+      layoutConfig: layout30VipConfig,
+    },
+    create: {
+      id: '00000000-0000-4000-a000-000000000030',
+      companyId: company.id,
+      name: '30-Seat 2+1 Business VIP',
+      rows: 10,
+      columns: 3,
+      layoutConfig: layout30VipConfig,
+      description: 'Business Class 30 seat 2+1 VIP layout (A1-J3)',
     },
   });
 

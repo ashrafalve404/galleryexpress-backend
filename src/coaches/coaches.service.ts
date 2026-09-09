@@ -47,6 +47,50 @@ export class CoachesService {
       },
     });
 
+    let layoutConfig: Array<{ label: string; row: number; column: number; deck?: string }> = [];
+
+    if (dto.seatLayoutId && dto.seatLayoutId !== 'CUSTOM') {
+      const layout = await this.prisma.seatLayout.findUnique({
+        where: { id: dto.seatLayoutId },
+      });
+      if (layout && Array.isArray(layout.layoutConfig)) {
+        layoutConfig = layout.layoutConfig as Array<{ label: string; row: number; column: number; deck?: string }>;
+      }
+    }
+
+    if (layoutConfig.length === 0) {
+      const total = dto.totalSeats || 40;
+      const rowLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
+      const cols = total <= 30 ? 3 : 4;
+      const totalRows = Math.ceil(total / cols);
+
+      let count = 0;
+      for (let r = 0; r < totalRows; r++) {
+        const letter = rowLetters[r] || `R${r + 1}`;
+        for (let c = 1; c <= cols; c++) {
+          if (count >= total) break;
+          layoutConfig.push({
+            label: `${letter}${c}`,
+            row: r + 1,
+            column: c,
+            deck: 'SINGLE',
+          });
+          count++;
+        }
+      }
+    }
+
+    await this.prisma.seat.createMany({
+      data: layoutConfig.map((cell) => ({
+        coachId: coach.id,
+        seatNumber: cell.label,
+        row: cell.row,
+        column: cell.column,
+        seatType: 'REGULAR',
+        status: 'AVAILABLE',
+      })),
+    });
+
     return coach;
   }
 
@@ -78,7 +122,7 @@ export class CoachesService {
         orderBy: { [query.sortBy || 'createdAt']: query.sort || 'desc' },
         include: {
           coachType: true,
-          seatLayout: { select: { id: true, name: true } },
+          seatLayout: { select: { id: true, name: true, rows: true, columns: true, layoutConfig: true } },
           _count: { select: { seats: true } },
         },
       }),
@@ -120,11 +164,58 @@ export class CoachesService {
         throw new ConflictException('Registration number already in use');
     }
 
-    return this.prisma.coach.update({
+    const updated = await this.prisma.coach.update({
       where: { id },
       data: dto,
       include: { coachType: true, seatLayout: true },
     });
+
+    let layoutConfig: Array<{ label: string; row: number; column: number; deck?: string }> = [];
+
+    if (dto.seatLayoutId && dto.seatLayoutId !== 'CUSTOM') {
+      const layout = await this.prisma.seatLayout.findUnique({
+        where: { id: dto.seatLayoutId },
+      });
+      if (layout && Array.isArray(layout.layoutConfig)) {
+        layoutConfig = layout.layoutConfig as Array<{ label: string; row: number; column: number; deck?: string }>;
+      }
+    }
+
+    if (layoutConfig.length === 0) {
+      const total = dto.totalSeats || updated.totalSeats || 40;
+      const rowLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
+      const cols = total <= 30 ? 3 : 4;
+      const totalRows = Math.ceil(total / cols);
+
+      let count = 0;
+      for (let r = 0; r < totalRows; r++) {
+        const letter = rowLetters[r] || `R${r + 1}`;
+        for (let c = 1; c <= cols; c++) {
+          if (count >= total) break;
+          layoutConfig.push({
+            label: `${letter}${c}`,
+            row: r + 1,
+            column: c,
+            deck: 'SINGLE',
+          });
+          count++;
+        }
+      }
+    }
+
+    await this.prisma.seat.deleteMany({ where: { coachId: id } });
+    await this.prisma.seat.createMany({
+      data: layoutConfig.map((cell) => ({
+        coachId: id,
+        seatNumber: cell.label,
+        row: cell.row,
+        column: cell.column,
+        seatType: 'REGULAR',
+        status: 'AVAILABLE',
+      })),
+    });
+
+    return updated;
   }
 
   async remove(id: string, companyId: string) {
