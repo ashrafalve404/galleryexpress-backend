@@ -27,7 +27,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { PaginationDto } from '../common/utils/pagination.util';
 import { UserRole, CoachStatus } from '@prisma/client';
-import { IsString, IsOptional, IsInt, Min, IsObject } from 'class-validator';
+import { IsString, IsOptional, IsInt, Min, IsDefined } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 class CreateCoachTypeDto {
@@ -39,7 +39,7 @@ class CreateSeatLayoutDto {
   @ApiProperty() @IsString() name: string;
   @ApiProperty() @IsInt() @Min(1) rows: number;
   @ApiProperty() @IsInt() @Min(1) columns: number;
-  @ApiProperty() @IsObject() layoutConfig: object;
+  @ApiProperty() @IsDefined() layoutConfig: any;
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
 }
 
