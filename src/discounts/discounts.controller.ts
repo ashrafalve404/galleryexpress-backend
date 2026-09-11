@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -81,5 +82,17 @@ export class DiscountsController {
     @Body() dto: Partial<CreateDiscountDto>,
   ) {
     return this.discountsService.update(id, user.companyId, dto);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Delete('admin/discounts/:id')
+  @ApiOperation({ summary: 'Delete discount (admin)' })
+  delete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.discountsService.delete(id, user.companyId);
   }
 }

@@ -88,6 +88,12 @@ export class DiscountsService {
     });
   }
 
+  async delete(id: string, companyId: string) {
+    await this.findOne(id, companyId);
+    await this.prisma.discount.delete({ where: { id } });
+    return { message: 'Discount deleted successfully' };
+  }
+
   async validate(companyId: string, code: string, amount?: number) {
     const discount = await this.prisma.discount.findFirst({
       where: {
