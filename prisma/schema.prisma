@@ -905,18 +905,19 @@ model CounterAgentCommission {
   id               String           @id @default(uuid())
   companyId        String
   agentId          String           // Counter agent receiving this commission
-  triggerBookingId String           // Normal user booking that triggered it
-  totalCommission  Decimal          @db.Decimal(10, 2) // ৳200 total pool
-  agentShare       Decimal          @db.Decimal(10, 2) // ৳200 / N agents = this agent's share
-  totalAgents      Int              // N = how many agents shared this ৳200
+  triggerBookingId String?          // Optional: user booking or null for monthly sales bonus
+  notes            String?          // Notes/Description of bonus
+  totalCommission  Decimal          @db.Decimal(10, 2) // Total bonus pool
+  agentShare       Decimal          @db.Decimal(10, 2) // Agent's bonus share
+  totalAgents      Int              @default(1)
   status           CommissionStatus @default(PENDING)
   paidAt           DateTime?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
-  company        Company @relation(fields: [companyId], references: [id])
-  agent          User    @relation(fields: [agentId], references: [id])
-  triggerBooking Booking @relation(fields: [triggerBookingId], references: [id])
+  company        Company   @relation(fields: [companyId], references: [id])
+  agent          User      @relation(fields: [agentId], references: [id])
+  triggerBooking Booking?  @relation(fields: [triggerBookingId], references: [id])
 
   @@index([companyId])
   @@index([agentId])

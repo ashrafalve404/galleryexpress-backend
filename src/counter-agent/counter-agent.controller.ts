@@ -256,5 +256,27 @@ export class CounterAgentController {
   ) {
     return this.svc.deleteBulkOrder(orderId, user.companyId);
   }
+
+  @Post('admin/process-monthly-bonuses')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Process monthly sales bonuses for agents' })
+  processMonthlySalesBonuses(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { year?: number; month?: number },
+  ) {
+    return this.svc.processMonthlySalesBonuses(user.companyId, body?.year, body?.month);
+  }
+
+  @Get('admin/agents/:agentId/details')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get full details, activity history, earnings and network for a counter agent' })
+  getAdminAgentDetails(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('agentId') agentId: string,
+  ) {
+    return this.svc.getAdminAgentDetails(agentId, user.companyId);
+  }
 }
+
+
 

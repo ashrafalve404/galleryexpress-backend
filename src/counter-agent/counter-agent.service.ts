@@ -251,7 +251,7 @@ export class CounterAgentService {
     });
 
     // 2-Tier Agent Referral Commission:
-    // If agent was registered using another agent's referral code, referrer gets ৳200 PER ticket sold!
+    // If agent was registered using another agent's referral code, referrer gets ৳100 PER ticket sold!
     const referredByCode = (agent as any).referredByCode;
     if (referredByCode) {
       try {
@@ -260,11 +260,11 @@ export class CounterAgentService {
         });
 
         if (referrer) {
-          const referralCommissionAmount = 200 * seatCount;
+          const referralCommissionAmount = 100 * seatCount;
           await (this.prisma as any).counterAgentCommission.create({
             data: {
               companyId,
-              agentId: referrer.id, // Referrer receives ৳200 / ticket sold
+              agentId: referrer.id, // Referrer receives ৳100 / ticket sold
               triggerBookingId: result.booking.id,
               totalCommission: referralCommissionAmount,
               agentShare: referralCommissionAmount,
@@ -830,6 +830,163 @@ export class CounterAgentService {
         }
       }
     }
+
+    // Automatically check & calculate monthly sales bonuses on date 1 of every month
+    if (new Date().getDate() === 1) {
+      try {
+        await this.processMonthlySalesBonuses(companyId);
+      } catch (e) {
+        console.error('processMonthlySalesBonuses automatic trigger notice:', e);
+      }
+    }
+  }
+
+  // ─── MONTHLY SALES BONUS (Calculated Date 1 of Every Month) ──────────────────
+  // Targets:
+  // 100 Tickets  -> ৳5,000
+  // 500 Tickets  -> ৳25,000
+  // 1,000 Tickets -> ৳50,000
+  // 5,000 Tickets -> ৳250,000
+  // Under Target (< 100) -> ৳0
+
+  async processMonthlySalesBonuses(companyId: string, inputYear?: number, inputMonth?: number) {
+    const TIERS = [
+      { target: 5000, bonus: 250000 },
+      { target: 1000, bonus: 50000 },
+      { target: 500, bonus: 25000 },
+      { target: 100, bonus: 5000 },
+    ];
+
+    const now = new Date();
+    let year = inputYear;
+    let month = inputMonth;
+
+    if (!year || !month) {
+      // Default: Previous calendar month
+      const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      year = prevDate.getFullYear();
+      month = prevDate.getMonth() + 1; // 1-indexed (1..12)
+    }
+
+    const monthStr = month.toString().padStart(2, '0');
+    const periodTag = `${year}-${monthStr}`;
+
+    const startDate = new Date(`${year}-${monthStr}-01T00:00:00.000Z`);
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = new Date(`${year}-${monthStr}-${lastDay.toString().padStart(2, '0')}T23:59:59.999Z`);
+
+    const agents = await this.prisma.user.findMany({
+      where: {
+        role: UserRole.COUNTER_AGENT,
+        status: 'ACTIVE',
+      },
+      select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+    });
+
+    const summaryResults: any[] = [];
+
+    for (const agent of agents) {
+      // Calculate total tickets sold by this agent in the target month window
+      const bookings = await this.prisma.booking.findMany({
+        where: {
+          userId: agent.id,
+          status: { in: ['CONFIRMED', 'HELD'] },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+        include: {
+          _count: { select: { bookingSeats: true } },
+        },
+      });
+
+      const ticketsSoldInMonth = bookings.reduce((sum, b) => {
+        const seats = (b as any)._count?.bookingSeats || 0;
+        return sum + (seats > 0 ? seats : 1);
+      }, 0);
+
+      // Determine highest target tier achieved
+      const tierAchieved = TIERS.find((t) => ticketsSoldInMonth >= t.target);
+
+      if (!tierAchieved) {
+        summaryResults.push({
+          agentId: agent.id,
+          agentName: `${agent.firstName || ''} ${agent.lastName || ''}`.trim() || agent.phone,
+          ticketsSoldInMonth,
+          targetAchieved: 0,
+          bonusAmount: 0,
+          status: 'TARGET_NOT_REACHED',
+        });
+        continue;
+      }
+
+      // Check if monthly bonus commission already issued for this agent for this month
+      const existingCommission = await (this.prisma as any).counterAgentCommission.findFirst({
+        where: {
+          agentId: agent.id,
+          notes: { contains: `Monthly Sales Bonus (${periodTag})` },
+        },
+      });
+
+      if (existingCommission) {
+        summaryResults.push({
+          agentId: agent.id,
+          agentName: `${agent.firstName || ''} ${agent.lastName || ''}`.trim() || agent.phone,
+          ticketsSoldInMonth,
+          targetAchieved: tierAchieved.target,
+          bonusAmount: tierAchieved.bonus,
+          status: 'ALREADY_ISSUED',
+          commissionId: existingCommission.id,
+        });
+        continue;
+      }
+
+      // Issue Monthly Sales Bonus Commission
+      const noteText = `Monthly Sales Bonus (${periodTag}): Achieved ${tierAchieved.target}+ tickets target (${ticketsSoldInMonth} sold) -> ৳${tierAchieved.bonus.toLocaleString('en-BD')} bonus!`;
+      const comm = await (this.prisma as any).counterAgentCommission.create({
+        data: {
+          companyId,
+          agentId: agent.id,
+          totalCommission: tierAchieved.bonus,
+          agentShare: tierAchieved.bonus,
+          totalAgents: 1,
+          status: 'PAID',
+          notes: noteText,
+        },
+      });
+
+      // Notify agent
+      try {
+        await this.prisma.notification.create({
+          data: {
+            companyId,
+            userId: agent.id,
+            type: 'GENERAL',
+            title: '🎉 Monthly Sales Bonus Achieved!',
+            message: `Congratulations! You sold ${ticketsSoldInMonth} tickets in ${periodTag} (Target: ${tierAchieved.target}+) and earned a ৳${tierAchieved.bonus.toLocaleString('en-BD')} monthly sales bonus!`,
+          } as any,
+        });
+      } catch (err) {
+        console.error('Monthly sales bonus notification notice:', err);
+      }
+
+      summaryResults.push({
+        agentId: agent.id,
+        agentName: `${agent.firstName || ''} ${agent.lastName || ''}`.trim() || agent.phone,
+        ticketsSoldInMonth,
+        targetAchieved: tierAchieved.target,
+        bonusAmount: tierAchieved.bonus,
+        status: 'ISSUED_SUCCESSFULLY',
+        commissionId: comm.id,
+      });
+    }
+
+    return {
+      success: true,
+      period: periodTag,
+      startDate,
+      endDate,
+      processedAgentsCount: summaryResults.length,
+      summary: summaryResults,
+    };
   }
 
   // ─── ADMIN MONITORING METHODS ────────────────────────────────────────────────
@@ -1407,7 +1564,165 @@ export class CounterAgentService {
     const stats = await this.getDashboardStats(agentId, '');
     return stats.referredAgents || [];
   }
+
+  async getAdminAgentDetails(agentId: string, companyId: string) {
+    const agent = await this.prisma.user.findFirst({
+      where: { id: agentId, companyId, role: UserRole.COUNTER_AGENT },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        status: true,
+        referralCode: true,
+        referredByCode: true,
+        assignedCounterId: true,
+        nidNumber: true,
+        nidFrontDocUrl: true,
+        nidBackDocUrl: true,
+        kycStatus: true,
+        kycVerifiedAt: true,
+        kycRejectionReason: true,
+        createdAt: true,
+        updatedAt: true,
+      } as any,
+    });
+    if (!agent) throw new NotFoundException('Counter Agent not found');
+
+    let counter = null;
+    if ((agent as any).assignedCounterId) {
+      counter = await this.prisma.counter.findFirst({
+        where: { id: (agent as any).assignedCounterId },
+        select: { id: true, name: true, location: true },
+      });
+    }
+
+    const bulkOrders = await this.prisma.bulkTicketOrder.findMany({
+      where: { agentId, companyId },
+      include: {
+        route: { select: { id: true, origin: true, destination: true } },
+        counter: { select: { id: true, name: true, location: true } },
+      } as any,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const commissions = await this.prisma.counterAgentCommission.findMany({
+      where: { agentId, companyId },
+      include: {
+        triggerBooking: {
+          select: {
+            id: true,
+            bookingRef: true,
+            totalAmount: true,
+          },
+        },
+      } as any,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let referredAgents: any[] = [];
+    if ((agent as any).referralCode) {
+      const referred = await this.prisma.user.findMany({
+        where: { companyId, referredByCode: (agent as any).referralCode, role: UserRole.COUNTER_AGENT } as any,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          status: true,
+          createdAt: true,
+        } as any,
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const referredIds = referred.map((r: any) => r.id);
+      const referredBulkOrders = referredIds.length > 0
+        ? await this.prisma.bulkTicketOrder.findMany({
+            where: { agentId: { in: referredIds }, companyId },
+          })
+        : [];
+
+      referredAgents = referred.map((refUser: any) => {
+        const refOrders = referredBulkOrders.filter((bo) => bo.agentId === refUser.id);
+        const totalBought = refOrders.reduce((sum, o) => sum + (o.quantity || 0), 0);
+        const totalLeft = refOrders.reduce((sum, o) => sum + (o.remainingQuantity || 0), 0);
+        const totalSold = Math.max(0, totalBought - totalLeft);
+
+        return {
+          ...refUser,
+          totalBought,
+          totalSold,
+          referralCommissionGenerated: totalSold * 100,
+        };
+      });
+    }
+
+    const soldBookings = await this.prisma.booking.findMany({
+      where: { userId: agentId, companyId },
+      select: {
+        id: true,
+        bookingRef: true,
+        totalAmount: true,
+        status: true,
+        paymentStatus: true,
+        createdAt: true,
+        schedule: {
+          select: {
+            id: true,
+            departureDate: true,
+            departureTime: true,
+            route: { select: { origin: true, destination: true } },
+          },
+        },
+      } as any,
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    const totalBulkTicketsBought = bulkOrders.reduce((sum, o) => sum + (o.quantity || 0), 0);
+    const totalBulkRemaining = bulkOrders.reduce((sum, o) => sum + (o.remainingQuantity || 0), 0);
+    const totalInvested = bulkOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+    const totalTicketsSold = Math.max(
+      soldBookings.length,
+      totalBulkTicketsBought - totalBulkRemaining,
+    );
+
+    const referralCommissionsTotal = commissions
+      .filter((c: any) => c.type === 'REFERRAL_COMMISSION' || c.type === 'COMMISSION')
+      .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+
+    const monthlyBonusesTotal = commissions
+      .filter((c: any) => c.type === 'MONTHLY_SALES_BONUS')
+      .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+
+    const totalEarnings = referralCommissionsTotal + monthlyBonusesTotal;
+
+    return {
+      agent: {
+        ...agent,
+        counter,
+      },
+      stats: {
+        totalBulkTicketsBought,
+        totalBulkRemaining,
+        totalTicketsSold,
+        totalInvested,
+        referralCommissionsTotal,
+        monthlyBonusesTotal,
+        totalEarnings,
+        activeOrdersCount: bulkOrders.filter((o) => o.status === 'ACTIVE' && o.remainingQuantity > 0).length,
+        referredAgentsCount: referredAgents.length,
+      },
+      bulkOrders,
+      commissions,
+      referredAgents,
+      soldBookings,
+    };
+  }
 }
+
 
 
 
