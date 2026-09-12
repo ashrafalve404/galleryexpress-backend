@@ -457,6 +457,65 @@ export class CounterAgentService {
       const totalEarnedTowardsCap = commissionEarnedOnOrders + referralEarnings;
       const remainingCapacity = Math.max(0, commissionCap - totalEarnedTowardsCap);
 
+      // Current Month Sales & Bonus Target Progress
+      const now = new Date();
+      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      let currentMonthTicketsSold = 0;
+      try {
+        const monthBookings = await this.prisma.booking.findMany({
+          where: {
+            userId: agentId,
+            companyId,
+            createdAt: { gte: firstDayOfMonth, lte: lastDayOfMonth },
+          },
+          select: { id: true, totalAmount: true },
+        });
+        currentMonthTicketsSold = monthBookings.length;
+      } catch (err) {
+        currentMonthTicketsSold = 0;
+      }
+
+      let currentBonusTier = 'Target Pending';
+      let currentTargetBonus = 0;
+      let nextTierTickets = 100;
+      let nextTierBonus = 5000;
+
+      if (currentMonthTicketsSold >= 5000) {
+        currentBonusTier = 'Tier 4 (5,000+ Tickets)';
+        currentTargetBonus = 250000;
+        nextTierTickets = 5000;
+        nextTierBonus = 250000;
+      } else if (currentMonthTicketsSold >= 1000) {
+        currentBonusTier = 'Tier 3 (1,000 Tickets)';
+        currentTargetBonus = 50000;
+        nextTierTickets = 5000;
+        nextTierBonus = 250000;
+      } else if (currentMonthTicketsSold >= 500) {
+        currentBonusTier = 'Tier 2 (500 Tickets)';
+        currentTargetBonus = 25000;
+        nextTierTickets = 1000;
+        nextTierBonus = 50000;
+      } else if (currentMonthTicketsSold >= 100) {
+        currentBonusTier = 'Tier 1 (100 Tickets)';
+        currentTargetBonus = 5000;
+        nextTierTickets = 500;
+        nextTierBonus = 25000;
+      }
+
+      const monthlySalesBonus = {
+        currentMonthTicketsSold,
+        currentBonusTier,
+        currentTargetBonus,
+        nextTierTickets,
+        nextTierBonus,
+        progressPct: Math.min(100, Math.round((currentMonthTicketsSold / nextTierTickets) * 100)),
+        monthlyBonusesEarnedTotal: commissions
+          .filter((c: any) => c.notes?.toLowerCase().includes('monthly sales bonus') || !c.triggerBookingId)
+          .reduce((sum: number, c: any) => sum + Number(c.agentShare || 0), 0),
+      };
+
       return {
         agent: { ...agent, assignedCounterId: (agentFull as any)?.assignedCounterId },
         counter,
@@ -467,6 +526,7 @@ export class CounterAgentService {
         referredCount,
         referralEarnings,
         referredAgents,
+        monthlySalesBonus,
         commissionStats: {
           totalEarned,
           commissionCap,
@@ -484,6 +544,15 @@ export class CounterAgentService {
         totalTicketsBought: 0,
         totalTicketsRemaining: 0,
         totalInvested: 0,
+        monthlySalesBonus: {
+          currentMonthTicketsSold: 0,
+          currentBonusTier: 'Target Pending',
+          currentTargetBonus: 0,
+          nextTierTickets: 100,
+          nextTierBonus: 5000,
+          progressPct: 0,
+          monthlyBonusesEarnedTotal: 0,
+        },
         commissionStats: {
           totalEarned: 0,
           commissionCap: 0,
@@ -1592,94 +1661,117 @@ export class CounterAgentService {
 
     let counter = null;
     if ((agent as any).assignedCounterId) {
-      counter = await this.prisma.counter.findFirst({
-        where: { id: (agent as any).assignedCounterId },
-        select: { id: true, name: true, location: true },
-      });
+      try {
+        counter = await this.prisma.counter.findFirst({
+          where: { id: (agent as any).assignedCounterId },
+          select: { id: true, name: true, location: true },
+        });
+      } catch (err) {
+        counter = null;
+      }
     }
 
-    const bulkOrders = await this.prisma.bulkTicketOrder.findMany({
-      where: { agentId, companyId },
-      include: {
-        route: { select: { id: true, origin: true, destination: true } },
-        counter: { select: { id: true, name: true, location: true } },
-      } as any,
-      orderBy: { createdAt: 'desc' },
-    });
+    let bulkOrders: any[] = [];
+    try {
+      bulkOrders = await (this.prisma as any).bulkTicketOrder.findMany({
+        where: { agentId, companyId },
+        include: {
+          route: { select: { id: true, origin: true, destination: true } },
+          counter: { select: { id: true, name: true, location: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch (err) {
+      bulkOrders = [];
+    }
 
-    const commissions = await this.prisma.counterAgentCommission.findMany({
-      where: { agentId, companyId },
-      include: {
-        triggerBooking: {
-          select: {
-            id: true,
-            bookingRef: true,
-            totalAmount: true,
+    let commissions: any[] = [];
+    try {
+      commissions = await (this.prisma as any).counterAgentCommission.findMany({
+        where: { agentId, companyId },
+        include: {
+          triggerBooking: {
+            select: {
+              id: true,
+              bookingRef: true,
+              totalAmount: true,
+            },
           },
         },
-      } as any,
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch (err) {
+      commissions = [];
+    }
 
     let referredAgents: any[] = [];
     if ((agent as any).referralCode) {
-      const referred = await this.prisma.user.findMany({
-        where: { companyId, referredByCode: (agent as any).referralCode, role: UserRole.COUNTER_AGENT } as any,
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          phone: true,
-          status: true,
-          createdAt: true,
-        } as any,
-        orderBy: { createdAt: 'desc' },
-      });
-
-      const referredIds = referred.map((r: any) => r.id);
-      const referredBulkOrders = referredIds.length > 0
-        ? await this.prisma.bulkTicketOrder.findMany({
-            where: { agentId: { in: referredIds }, companyId },
-          })
-        : [];
-
-      referredAgents = referred.map((refUser: any) => {
-        const refOrders = referredBulkOrders.filter((bo) => bo.agentId === refUser.id);
-        const totalBought = refOrders.reduce((sum, o) => sum + (o.quantity || 0), 0);
-        const totalLeft = refOrders.reduce((sum, o) => sum + (o.remainingQuantity || 0), 0);
-        const totalSold = Math.max(0, totalBought - totalLeft);
-
-        return {
-          ...refUser,
-          totalBought,
-          totalSold,
-          referralCommissionGenerated: totalSold * 100,
-        };
-      });
-    }
-
-    const soldBookings = await this.prisma.booking.findMany({
-      where: { userId: agentId, companyId },
-      select: {
-        id: true,
-        bookingRef: true,
-        totalAmount: true,
-        status: true,
-        paymentStatus: true,
-        createdAt: true,
-        schedule: {
+      try {
+        const referred = await this.prisma.user.findMany({
+          where: { companyId, referredByCode: (agent as any).referralCode, role: UserRole.COUNTER_AGENT } as any,
           select: {
             id: true,
-            departureDate: true,
-            departureTime: true,
-            route: { select: { origin: true, destination: true } },
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            status: true,
+            createdAt: true,
+          } as any,
+          orderBy: { createdAt: 'desc' },
+        });
+
+        const referredIds = referred.map((r: any) => r.id);
+        const referredBulkOrders = referredIds.length > 0
+          ? await (this.prisma as any).bulkTicketOrder.findMany({
+              where: { agentId: { in: referredIds }, companyId },
+            })
+          : [];
+
+        referredAgents = referred.map((refUser: any) => {
+          const refOrders = referredBulkOrders.filter((bo: any) => bo.agentId === refUser.id);
+          const totalBought = refOrders.reduce((sum: number, o: any) => sum + (o.quantity || 0), 0);
+          const totalLeft = refOrders.reduce((sum: number, o: any) => sum + (o.remainingQuantity || 0), 0);
+          const totalSold = Math.max(0, totalBought - totalLeft);
+
+          return {
+            ...refUser,
+            totalBought,
+            totalSold,
+            referralCommissionGenerated: totalSold * 100,
+          };
+        });
+      } catch (err) {
+        referredAgents = [];
+      }
+    }
+
+    let soldBookings: any[] = [];
+    try {
+      soldBookings = await this.prisma.booking.findMany({
+        where: { userId: agentId, companyId },
+        select: {
+          id: true,
+          bookingRef: true,
+          totalAmount: true,
+          status: true,
+          paymentStatus: true,
+          createdAt: true,
+          schedule: {
+            select: {
+              id: true,
+              departureDate: true,
+              departureTime: true,
+              route: { select: { origin: true, destination: true } },
+            },
           },
-        },
-      } as any,
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+        } as any,
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
+    } catch (err) {
+      soldBookings = [];
+    }
 
     const totalBulkTicketsBought = bulkOrders.reduce((sum, o) => sum + (o.quantity || 0), 0);
     const totalBulkRemaining = bulkOrders.reduce((sum, o) => sum + (o.remainingQuantity || 0), 0);
@@ -1689,13 +1781,23 @@ export class CounterAgentService {
       totalBulkTicketsBought - totalBulkRemaining,
     );
 
-    const referralCommissionsTotal = commissions
-      .filter((c: any) => c.type === 'REFERRAL_COMMISSION' || c.type === 'COMMISSION')
-      .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+    const formattedCommissions = commissions.map((c: any) => {
+      const isBonus = c.notes?.toLowerCase().includes('monthly sales bonus') || !c.triggerBookingId;
+      const amount = Number(c.agentShare || c.totalCommission || c.amount || 0);
+      return {
+        ...c,
+        amount,
+        type: isBonus ? 'MONTHLY_SALES_BONUS' : 'REFERRAL_COMMISSION',
+      };
+    });
 
-    const monthlyBonusesTotal = commissions
+    const referralCommissionsTotal = formattedCommissions
+      .filter((c: any) => c.type === 'REFERRAL_COMMISSION')
+      .reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0);
+
+    const monthlyBonusesTotal = formattedCommissions
       .filter((c: any) => c.type === 'MONTHLY_SALES_BONUS')
-      .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+      .reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0);
 
     const totalEarnings = referralCommissionsTotal + monthlyBonusesTotal;
 
@@ -1716,7 +1818,7 @@ export class CounterAgentService {
         referredAgentsCount: referredAgents.length,
       },
       bulkOrders,
-      commissions,
+      commissions: formattedCommissions,
       referredAgents,
       soldBookings,
     };
