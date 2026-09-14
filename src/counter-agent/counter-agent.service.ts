@@ -62,11 +62,12 @@ export class CounterAgentService {
     const agent = await this.prisma.user.findUnique({ where: { id: agentId } });
     if (!agent) throw new NotFoundException('Agent account not found.');
 
-    if (agent.kycStatus !== 'VERIFIED') {
-      throw new BadRequestException(
-        'KYC Verification Required. Please upload your NID Front & Back images and wait for Admin approval before purchasing bulk tickets.',
-      );
-    }
+    // KYC check temporarily optional per requirements
+    // if (agent.kycStatus !== 'VERIFIED') {
+    //   throw new BadRequestException(
+    //     'KYC Verification Required. Please upload your NID Front & Back images and wait for Admin approval before purchasing bulk tickets.',
+    //   );
+    // }
 
     const bulkOrder = await this.prisma.bulkTicketOrder.create({
       data: {
@@ -114,11 +115,12 @@ export class CounterAgentService {
     const agent = await this.prisma.user.findUnique({ where: { id: agentId } });
     if (!agent) throw new NotFoundException('Agent account not found.');
 
-    if (agent.kycStatus !== 'VERIFIED') {
-      throw new BadRequestException(
-        'KYC Verification Required. Please wait for Admin KYC approval before selling tickets.',
-      );
-    }
+    // KYC check temporarily optional per requirements
+    // if (agent.kycStatus !== 'VERIFIED') {
+    //   throw new BadRequestException(
+    //     'KYC Verification Required. Please wait for Admin KYC approval before selling tickets.',
+    //   );
+    // }
 
     const schedule = await this.prisma.schedule.findFirst({
       where: { id: dto.scheduleId, companyId },
