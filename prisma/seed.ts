@@ -416,7 +416,7 @@ async function main() {
 
   let scheduleCounter = 100;
   const now = new Date();
-  for (let dayOffset = 0; dayOffset <= 10; dayOffset++) {
+  for (let dayOffset = 0; dayOffset <= 30; dayOffset++) {
     const d = new Date(now.getTime() + dayOffset * 86400000);
     const dateStr = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
     const targetDate = new Date(`${dateStr}T00:00:00.000Z`);

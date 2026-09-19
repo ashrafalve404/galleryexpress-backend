@@ -118,6 +118,7 @@ export class SchedulesService {
     let searchDateStr: string | undefined;
     if (dto.date) {
       searchDateStr = dto.date.split('T')[0];
+      await this.ensureDailySchedulesForDate(searchDateStr);
       // Exact UTC day start/end — seed stores midnight UTC so this is precise
       const startOfDay = new Date(`${searchDateStr}T00:00:00.000Z`);
       const endOfDay = new Date(`${searchDateStr}T23:59:59.999Z`);
@@ -472,5 +473,131 @@ export class SchedulesService {
         bookedGender,
       };
     });
+  }
+
+  private async ensureDailySchedulesForDate(dateStr: string) {
+    try {
+      const targetDate = new Date(`${dateStr}T00:00:00.000Z`);
+
+      // Check if active schedules already exist for this date
+      const existingCount = await this.prisma.schedule.count({
+        where: {
+          departureDate: targetDate,
+          status: 'ACTIVE',
+        },
+      });
+
+      if (existingCount > 0) return;
+
+      const [routes, coaches, company] = await Promise.all([
+        this.prisma.route.findMany({
+          where: { status: 'ACTIVE' },
+          orderBy: { id: 'asc' },
+        }),
+        this.prisma.coach.findMany({
+          where: { status: 'ACTIVE' },
+          orderBy: { id: 'asc' },
+        }),
+        this.prisma.company.findFirst({
+          where: { slug: 'gallery-express' },
+        }),
+      ]);
+
+      if (!routes.length || !coaches.length || !company) return;
+
+      const scheduleMatrix = [
+        // Route 0: Dhaka -> Cox's Bazar
+        { routeIdx: 0, coachIdx: 0, depTime: '07:00' },
+        { routeIdx: 0, coachIdx: 2, depTime: '10:00' },
+        { routeIdx: 0, coachIdx: 3, depTime: '15:30' },
+        { routeIdx: 0, coachIdx: 4, depTime: '21:00' },
+        { routeIdx: 0, coachIdx: 1, depTime: '23:30' },
+        // Route 1: Cox's Bazar -> Dhaka
+        { routeIdx: 1, coachIdx: 0, depTime: '07:00' },
+        { routeIdx: 1, coachIdx: 3, depTime: '14:00' },
+        { routeIdx: 1, coachIdx: 4, depTime: '22:00' },
+        { routeIdx: 1, coachIdx: 2, depTime: '23:45' },
+        // Route 2: Dhaka -> Chittagong
+        { routeIdx: 2, coachIdx: 1, depTime: '08:00' },
+        { routeIdx: 2, coachIdx: 2, depTime: '14:00' },
+        { routeIdx: 2, coachIdx: 4, depTime: '20:00' },
+        { routeIdx: 2, coachIdx: 0, depTime: '23:30' },
+        // Route 3: Chittagong -> Dhaka
+        { routeIdx: 3, coachIdx: 1, depTime: '07:30' },
+        { routeIdx: 3, coachIdx: 3, depTime: '15:00' },
+        { routeIdx: 3, coachIdx: 4, depTime: '23:15' },
+        // Route 4: Chittagong -> Cox's Bazar
+        { routeIdx: 4, coachIdx: 2, depTime: '09:00' },
+        { routeIdx: 4, coachIdx: 3, depTime: '16:00' },
+        // Route 5: Cox's Bazar -> Chittagong
+        { routeIdx: 5, coachIdx: 2, depTime: '08:00' },
+        { routeIdx: 5, coachIdx: 4, depTime: '15:00' },
+      ];
+
+      const newSchedulesData: Prisma.ScheduleCreateManyInput[] = [];
+
+      if (routes.length >= 6) {
+        for (const item of scheduleMatrix) {
+          const route = routes[item.routeIdx % routes.length];
+          const coach = coaches[item.coachIdx % coaches.length];
+
+          const [h, m] = item.depTime.split(':').map(Number);
+          const durMins = route.durationMins ?? 480;
+          const arrivalTotalMins = h * 60 + m + durMins;
+          const arrH = Math.floor(arrivalTotalMins / 60) % 24;
+          const arrM = arrivalTotalMins % 60;
+          const arrTime = `${arrH.toString().padStart(2, '0')}:${arrM.toString().padStart(2, '0')}`;
+
+          newSchedulesData.push({
+            companyId: company.id,
+            coachId: coach.id,
+            routeId: route.id,
+            departureDate: targetDate,
+            departureTime: item.depTime,
+            arrivalTime: arrTime,
+            isRecurring: false,
+            status: 'ACTIVE',
+            notes: `Daily express service (${route.origin} to ${route.destination})`,
+          });
+        }
+      } else {
+        let coachIdx = 0;
+        const defaultTimes = ['08:00', '14:00', '20:00'];
+        for (const route of routes) {
+          for (const depTime of defaultTimes) {
+            const coach = coaches[coachIdx % coaches.length];
+            coachIdx++;
+
+            const [h, m] = depTime.split(':').map(Number);
+            const durMins = route.durationMins ?? 480;
+            const arrivalTotalMins = h * 60 + m + durMins;
+            const arrH = Math.floor(arrivalTotalMins / 60) % 24;
+            const arrM = arrivalTotalMins % 60;
+            const arrTime = `${arrH.toString().padStart(2, '0')}:${arrM.toString().padStart(2, '0')}`;
+
+            newSchedulesData.push({
+              companyId: company.id,
+              coachId: coach.id,
+              routeId: route.id,
+              departureDate: targetDate,
+              departureTime: depTime,
+              arrivalTime: arrTime,
+              isRecurring: false,
+              status: 'ACTIVE',
+              notes: `Daily express service (${route.origin} to ${route.destination})`,
+            });
+          }
+        }
+      }
+
+      if (newSchedulesData.length > 0) {
+        await this.prisma.schedule.createMany({
+          data: newSchedulesData,
+          skipDuplicates: true,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to auto-generate schedules for date:', dateStr, err);
+    }
   }
 }
